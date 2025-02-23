@@ -49,3 +49,7 @@ htmlcov/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+
+CHILI/
+data/
