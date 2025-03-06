@@ -5,11 +5,22 @@ from torch_geometric.utils import unbatch
 def position_MAE(pred_xyz, true_xyz):
     """
     Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
+    This function expects flattened tensors of atom coordinates and reshapes them to calculate
+    the Manhattan distance (L1 norm) between predicted and true positions for each atom.
     """
-    return torch.mean(
-        torch.sqrt(torch.sum(F.mse_loss(pred_xyz, true_xyz, reduction="none"), dim=1)),
-        dim=0,
-    )
+    # Reshape the flattened tensors to recover the 3D coordinates
+    # Each consecutive triplet of values represents x, y, z coordinates of an atom
+    pred_reshaped = pred_xyz.view(-1, 3)
+    true_reshaped = true_xyz.view(-1, 3)
+    
+    # Calculate absolute differences for each coordinate (Manhattan distance)
+    abs_diff = torch.abs(pred_reshaped - true_reshaped)
+    
+    # Sum the absolute differences across coordinates for each atom
+    manhattan_distances = torch.sum(abs_diff, dim=1)
+    
+    # Average these distances to get the MAE in Ångströms
+    return torch.mean(manhattan_distances)
 
 def pos_abs_padded(data, config_dict, device):
     """

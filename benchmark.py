@@ -11,6 +11,7 @@ from torch_geometric.seed import seed_everything
 from torch_geometric.nn.models import MLP, GCN, GIN, GAT, EdgeCNN, GraphSAGE, GraphUNet
 
 from CHILI_centralAtoms import CHILI
+from baseline_model import BaselineMLP
 
 def validate_dataset_atom_count(dataset, max_atoms, split_name):
     """Validate that all structures in the dataset have fewer atoms than max_atoms."""
@@ -103,38 +104,38 @@ def run_benchmark(args):
     
     # Define model configurations
     model_configurations = {
-        "GCN": {
-            "class": GCN,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
-            "skip_training": False,
-        },
-        "GraphSAGE": {
-            "class": GraphSAGE,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
-            "skip_training": False,
-        },
-        "GIN": {
-            "class": GIN,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
-            "skip_training": False,
-        },
-        "GAT": {
-            "class": GAT,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
-            "skip_training": False,
-        },
-        "EdgeCNN": {
-            "class": EdgeCNN,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
-            "skip_training": False,
-        },
-        "GraphUNet": {
-            "class": GraphUNet,
-            "kwargs": {"x": "None", "edge_index": "data.edge_index", "batch": "data.batch"},
-            "skip_training": False,
-        },
+        # "GCN": {
+        #     "class": GCN,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
+        # "GraphSAGE": {
+        #     "class": GraphSAGE,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
+        # "GIN": {
+        #     "class": GIN,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
+        # "GAT": {
+        #     "class": GAT,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
+        # "EdgeCNN": {
+        #     "class": EdgeCNN,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "edge_attr": "data.edge_attr", "edge_weight": "data.edge_attr", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
+        # "GraphUNet": {
+        #     "class": GraphUNet,
+        #     "kwargs": {"x": "None", "edge_index": "data.edge_index", "batch": "data.batch"},
+        #     "skip_training": False,
+        # },
         "MLP": {
-            "class": MLP,
+            "class": BaselineMLP,
             "kwargs": {"x": "None", "batch": "data.batch"},
             "skip_training": False,
         },
@@ -272,8 +273,10 @@ def run_benchmark(args):
             val_error = 0
             with torch.no_grad():
                 for data in val_loader:
+                    # print(data)
                     data = data.to(device)
-                    pred, truth = task_function(data, model, None, model_kwargs, device, config)  # Pass None instead of secondary
+                    pred, truth = task_function(data, model, None, model_kwargs, device, config) 
+                    # print(pred.shape, truth.shape) # Pass None instead of secondary
                     metric = metric_function(pred, truth)
                     val_error += metric.item()
             
@@ -323,7 +326,7 @@ def run_benchmark(args):
         stop_time = time.time()
         
         # Load best model for testing
-        checkpoint = torch.load(f"{save_dir}/best.pt")
+        checkpoint = torch.load(f"{save_dir}/best.pt", weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
         epoch = checkpoint["epoch"]
         
