@@ -34,7 +34,7 @@ def run_benchmark(args):
     print(f"Using device: {device}")
     
     # Create dataset
-    dataset = CHILI(root=config["root"], dataset=config["dataset"], graph_type='central')
+    dataset = CHILI(root=config["root"], dataset=config["dataset"], graph_type=config["graph_type"])
     
     # Load or create data split
     try:
@@ -368,6 +368,28 @@ def run_benchmark(args):
     os.makedirs(results_dir, exist_ok=True)
     results_df.to_csv(f"{results_dir}/results.csv")
     print(f"Results saved to {results_dir}/results.csv")
+    
+    return results_df
+
+# Function to run benchmark from a Jupyter notebook
+def run_benchmark_from_notebook(config_path, use_cpu=False):
+    """
+    Run the benchmark from a Jupyter notebook using a config file path.
+    
+    Args:
+        config_path (str): Path to the configuration file.
+        use_cpu (bool, optional): Force CPU usage even if GPU is available. Defaults to False.
+    
+    Returns:
+        pd.DataFrame: Results dataframe.
+    """
+    class Args:
+        def __init__(self, config_path, cpu):
+            self.config_path = config_path
+            self.cpu = cpu
+    
+    args = Args(config_path, use_cpu)
+    return run_benchmark(args)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run benchmarks for CHILI dataset")
