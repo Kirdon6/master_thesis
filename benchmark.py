@@ -140,12 +140,12 @@ def run_benchmark(args):
         },
     }
     
-    # Import task functions from CHILI benchmarking
-    from CHILI.benchmark.benchmarking import (
-        pos_abs_padded,
+    # Import task functions from local benchmarking module
+    from benchmark_tasks_utils import (
         pos_abs_from_saxs,
         pos_abs_from_xrd,
-        pos_abs_from_xPDF
+        pos_abs_from_xPDF,
+        position_MAE
     )
     
     # Define task configurations
@@ -172,15 +172,6 @@ def run_benchmark(args):
             "improved_function": lambda best, new: new < best if best is not None else True,
         },
     }
-
-    def position_MAE(pred_xyz, true_xyz):
-        """
-        Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
-        """
-        return torch.mean(
-            torch.sqrt(torch.sum(F.mse_loss(pred_xyz, true_xyz, reduction="none"), dim=1)),
-            dim=0,
-        )
     
     # Run benchmarks for each seed
     for seed_idx, seed in enumerate(config['Train_config']['seeds']):
