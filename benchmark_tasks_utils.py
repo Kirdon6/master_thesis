@@ -41,7 +41,7 @@ def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict)
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
-    sct = data.y['saxs'][1::2, :]
+    sct = data.y['saxs'][:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
@@ -59,7 +59,7 @@ def pos_abs_from_xrd(data, model, secondary, model_kwargs, device, config_dict):
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
-    sct = data.y['xrd'][1::2, :]
+    sct = data.y['xrd'][:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
@@ -77,7 +77,7 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
-    sct = data.y['xPDF'][1::2, :]
+    sct = data.y['xPDF'][:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
