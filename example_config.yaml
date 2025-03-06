@@ -3,6 +3,7 @@ root: "data"
 dataset: "CHILI-3K"
 log_dir: "logs"
 save_latest_model: true
+graph_type: "central"
 
 # Task configuration
 task: "AbsPositionRegressionxPDF"
