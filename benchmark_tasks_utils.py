@@ -2,25 +2,92 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.utils import unbatch
 
-def position_MAE(pred_xyz, true_xyz):
-    """
-    Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
-    This function expects flattened tensors of atom coordinates and reshapes them to calculate
-    the Manhattan distance (L1 norm) between predicted and true positions for each atom.
-    """
-    # Reshape the flattened tensors to recover the 3D coordinates
-    # Each consecutive triplet of values represents x, y, z coordinates of an atom
-    pred_reshaped = pred_xyz.view(-1, 3)
-    true_reshaped = true_xyz.view(-1, 3)
+# def position_MAE(pred_xyz, true_xyz):
+#     """
+#     Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
+#     This function expects flattened tensors of atom coordinates and reshapes them to calculate
+#     the Euclidean distance between predicted and true positions for each atom.
+#     """
+#     # Reshape the flattened tensors to recover the 3D coordinates
+#     # Each consecutive triplet of values represents x, y, z coordinates of an atom
+#     pred_reshaped = pred_xyz.view(-1, 3)
+#     true_reshaped = true_xyz.view(-1, 3)
     
-    # Calculate absolute differences for each coordinate (Manhattan distance)
-    abs_diff = torch.abs(pred_reshaped - true_reshaped)
+#     # Calculate squared differences for each coordinate
+#     squared_diff = (pred_reshaped - true_reshaped) ** 2
     
-    # Sum the absolute differences across coordinates for each atom
-    manhattan_distances = torch.sum(abs_diff, dim=1)
+#     # Sum across the coordinate dimensions (x, y, z) for each atom
+#     summed_squared_diff = torch.sum(squared_diff, dim=1)
     
-    # Average these distances to get the MAE in Ångströms
-    return torch.mean(manhattan_distances)
+#     # Take the square root to get the Euclidean distance for each atom
+#     distances = torch.sqrt(summed_squared_diff)
+    
+#     # Average these distances to get the MAE in Ångströms
+#     return torch.mean(distances)
+
+
+# def position_MAE(
+#     pred_xyz,
+#     true_xyz
+# ):
+#     """
+#     Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
+#     """
+#     return torch.mean(
+#         torch.sqrt(torch.sum(F.mse_loss(pred_xyz, true_xyz, reduction="none"), dim=1)),
+#         dim=0,
+#     )
+
+def position_MAE(
+        pred_xyz,
+        true_xyz
+    ):
+        """
+        Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
+        Ignores padded atoms (where coordinates in true_xyz are 0) and calculates MAE per structure.
+        Expects inputs in format [batch_size, atoms*3].
+        """
+        # print(f"Input shapes: {pred_xyz.shape}, {true_xyz.shape}")
+        
+        # Reshape from [batch, atoms*3] to [batch, atoms, 3]
+        batch_size = pred_xyz.shape[0]
+        coords_per_atom = 3
+        num_atoms = pred_xyz.shape[1] // coords_per_atom
+        
+        pred_xyz = pred_xyz.view(batch_size, num_atoms, coords_per_atom)
+        true_xyz = true_xyz.view(batch_size, num_atoms, coords_per_atom)
+        # print(f"pred_xyz shape: {pred_xyz.shape}, true_xyz shape: {true_xyz.shape}")
+        
+        # Create mask for non-padded atoms (where coordinates are not 100)
+        valid_mask = (true_xyz < 100).all(dim=2)
+        
+        # Initialize list to store per-structure MAE
+        structure_maes = []
+        
+        # Calculate MAE for each structure separately
+        for i in range(batch_size):
+            # Get valid atoms for this structure
+            structure_valid_mask = valid_mask[i]
+            
+            # Skip if no valid atoms (shouldn't happen in practice)
+            if not torch.any(structure_valid_mask):
+                continue
+                
+            # Get predictions and ground truth for valid atoms only
+            structure_pred = pred_xyz[i, structure_valid_mask]
+            structure_true = true_xyz[i, structure_valid_mask]
+            # print(f"structure_pred shape: {structure_pred.shape}, structure_true shape: {structure_true.shape}")
+            
+            # Calculate Euclidean distance for each atom
+            atom_distances = torch.sqrt(torch.sum((structure_pred - structure_true)**2, dim=1))
+            
+            # Calculate mean for this structure
+            structure_mae = torch.mean(atom_distances)
+            structure_maes.append(structure_mae)
+        
+        # Convert list to tensor and calculate mean across all structures
+
+        return torch.mean(torch.stack(structure_maes))
 
 def pos_abs_padded(data, config_dict, device):
     """
@@ -48,6 +115,7 @@ def pos_abs_padded(data, config_dict, device):
 def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from SAXS data.
+    Returns tensors in [batch, atoms*3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
@@ -60,12 +128,14 @@ def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict)
     evaluated_kwargs['x'] = sct
     pred = model(**evaluated_kwargs)
     truth = pos_abs_padded(data, config_dict, device)
+
     
-    return pred[truth < 100], truth[truth < 100]
+    return pred, truth
 
 def pos_abs_from_xrd(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from XRD data.
+    Returns tensors in [batch, atoms*3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
@@ -79,11 +149,14 @@ def pos_abs_from_xrd(data, model, secondary, model_kwargs, device, config_dict):
     pred = model(**evaluated_kwargs)
     truth = pos_abs_padded(data, config_dict, device)
     
-    return pred[truth < 100], truth[truth < 100]
+    
+    
+    return pred, truth
 
 def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from xPDF data.
+    Returns tensors in [batch, atoms*3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
@@ -92,9 +165,12 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
+    # print(f"input shape: {sct.shape}")
 
     evaluated_kwargs['x'] = sct
     pred = model(**evaluated_kwargs)
+    # print(f"pred shape: {pred.shape}")
     truth = pos_abs_padded(data, config_dict, device)
-    
-    return pred[truth < 100], truth[truth < 100] 
+    # print(f"truth shape: {truth.shape}" )
+
+    return pred, truth 
