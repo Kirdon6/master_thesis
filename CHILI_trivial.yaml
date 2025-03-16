@@ -1,0 +1,35 @@
+# Dataset configuration
+root: "data"
+dataset: "CHILI-3K"
+log_dir: "logs"
+save_latest_model: true
+graph_type: "central"
+
+# Task configuration
+task: "AbsPositionRegressionxPDF"
+model: "MLP"
+
+# Data configuration
+Data_config:
+  split_strategy: "random"
+  stratify_on: null
+  stratify_distribution: null
+  n_samples_per_class: null
+
+# Model configuration
+Model_config:
+  in_channels: 6000  # Input dimension for xPDF data (6000 values)
+  hidden_channels: 64  # As specified in the image: hidden layer size of 128
+  out_channels: 300  # Output dimension (3 * max_atoms)
+  num_layers: 1  # As specified in the image: 4-layer MLP
+  dropout: 0.5
+  # activation: "ReLU"  # As specified in the image: ReLU activation
+
+# Training configuration
+Train_config:
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 100
+  train_time: 3600  # Max training time in seconds
+  max_patience: 10
+  seeds: [42]  # Multiple seeds for robust evaluation 

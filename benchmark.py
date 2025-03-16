@@ -176,8 +176,21 @@ def run_benchmark(args):
             lr=config["Train_config"]["learning_rate"],
         )
         
-        # Setup logging
-        save_dir = f"{config['log_dir']}/{config['dataset']}/{config['task']}/{config['model']}/seed{seed}"
+        # Count trainable parameters
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        param_count_str = f"{trainable_params/1000:.0f}k" if trainable_params >= 1000 else str(trainable_params)
+        
+        # Print model summary
+        print(f"\nModel Summary for {config['model']}:")
+        print(f"Total trainable parameters: {trainable_params:,} ({param_count_str})")
+        
+        # Print detailed model architecture
+        print("Model architecture:")
+        print(model)
+        
+       
+        # Setup logging with parameter count in the path
+        save_dir = f"{config['log_dir']}/{config['dataset']}/{config['task']}/{config['model']}_{param_count_str}/seed{seed}"
         os.makedirs(save_dir, exist_ok=True)
         writer = SummaryWriter(save_dir)
         
@@ -335,8 +348,10 @@ def run_benchmark(args):
             test_error,
         ]
     
-    # Save results
-    results_dir = f"{config['log_dir']}/{config['dataset']}/{config['task']}/{config['model']}"
+    # Save results with parameter count in the path
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    param_count_str = f"{trainable_params/1000:.0f}k" if trainable_params >= 1000 else str(trainable_params)
+    results_dir = f"{config['log_dir']}/{config['dataset']}/{config['task']}/{config['model']}_{param_count_str}"
     os.makedirs(results_dir, exist_ok=True)
     results_df.to_csv(f"{results_dir}/results.csv")
     print(f"Results saved to {results_dir}/results.csv")
