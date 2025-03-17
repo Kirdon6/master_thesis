@@ -87,11 +87,11 @@ class VectorDiffusion(nn.Module):
         """
         # During inference, sample from the model
         batch_size = x.shape[0]
-        device = x.device
+        # device = x.device
         
         # Define output shape based on the expected number of atoms
         # out_channels is the total number of position coordinates (3 per atom)
-        num_atoms = self.denoiser.net[-1].out_features // 3
+        # num_atoms = self.denoiser.net[-1].out_features // 3
         shape = (batch_size, self.denoiser.net[-1].out_features)
         
         # Sample from the model
@@ -180,7 +180,7 @@ class VectorDiffusion(nn.Module):
         
         Args:
             x_0: Ground truth positions
-            cond: Conditioning data (xPDF) with shape [batch_size, 2, 6000]
+            cond: Conditioning data (xPDF) with shape [batch_size,6000]
             
         Returns:
             ELBO value
@@ -188,11 +188,10 @@ class VectorDiffusion(nn.Module):
         # Sample timestep
         t = torch.randint(1, self.T, (x_0.shape[0],), device=x_0.device)
         
-        # Extract the y-values (index 1) from xPDF
-        y_values = cond[:, 1, :]
+
         
         # Get latent embedding
-        latent_emb = self.encoder(y_values)
+        latent_emb = self.encoder(cond)
         
         # Sample noise
         epsilon = torch.randn_like(x_0)
@@ -215,7 +214,7 @@ class VectorDiffusion(nn.Module):
         
         Args:
             x_0: Ground truth positions
-            cond: Conditioning data (xPDF) with shape [batch_size, 2, 6000]
+            cond: Conditioning data (xPDF) with shape [batch_size, 6000]
             
         Returns:
             Loss value
@@ -229,7 +228,7 @@ class VectorDiffusion(nn.Module):
         
         Args:
             shape: Shape of the output tensor
-            cond: Conditioning data (xPDF) with shape [batch_size, 2, 6000]
+            cond: Conditioning data (xPDF) with shape [batch_size, 6000]
             
         Returns:
             Sampled atom positions
@@ -242,9 +241,7 @@ class VectorDiffusion(nn.Module):
         
         # Start from random noise
         x_t = torch.randn(shape, device=device)
-        
-        # Extract the y-values (index 1) from xPDF
-        y_values = cond[:, 1, :]
+
         
         # Reverse diffusion process
         for t in range(self.T, 0, -1):
@@ -255,7 +252,7 @@ class VectorDiffusion(nn.Module):
             t_tensor = torch.full((shape[0],), t, device=device, dtype=torch.long)
             
             # Single step of reverse diffusion
-            x_t = self.reverse_diffusion(x_t, t_tensor, noise, y_values)
+            x_t = self.reverse_diffusion(x_t, t_tensor, noise, cond)
         
         return x_t
 

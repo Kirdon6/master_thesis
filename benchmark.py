@@ -121,7 +121,8 @@ def run_benchmark(args):
         pos_abs_from_saxs,
         pos_abs_from_xrd,
         pos_abs_from_xPDF,
-        position_MAE
+        position_MAE,
+        pos_abs_padded
     )
     
     # Define task configurations
@@ -160,7 +161,6 @@ def run_benchmark(args):
         if model_config is None:
             raise ValueError(f"Model {config['model']} not supported")
         
-        # Create model (without Secondary)
         model_class = model_config['class']
         model_kwargs = model_config['kwargs']
         model = model_class(**config['Model_config']).to(device)
@@ -176,11 +176,21 @@ def run_benchmark(args):
         metric_name = task_config['metric_name']
         improved_function = task_config['improved_function']
         
-        # Create optimizer (without Secondary parameters)
         optimizer = torch.optim.Adam(
-            model.parameters(),  # Remove list() and secondary parameters
+            model.parameters(), 
             lr=config["Train_config"]["learning_rate"],
+            weight_decay=config["Train_config"].get("weight_decay", 0)
         )
+        
+        # Setup learning rate scheduler if enabled
+        if config["Train_config"].get("lr_scheduler", False):
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=config["Train_config"].get("lr_step_size", 50),
+                gamma=config["Train_config"].get("lr_gamma", 0.5)
+            )
+        else:
+            scheduler = None
         
         # Count trainable parameters
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -206,6 +216,9 @@ def run_benchmark(args):
         max_patience = config["Train_config"]["max_patience"]
         patience = 0
         best_error = None
+        
+        # Check if model uses custom loss
+        uses_custom_loss = config.get("custom_loss", False) and hasattr(model, "loss")
         
         # Training loop
         for epoch in range(config['Train_config']['epochs']):
@@ -244,8 +257,32 @@ def run_benchmark(args):
                 data = data.to(device)
                 
                 # Forward pass
-                pred, truth = task_function(data, model, None, model_kwargs, device, config)  # Pass None instead of secondary
-                loss = loss_function(pred, truth)
+                if uses_custom_loss:
+                    # For models with custom loss function (like VectorDiffusion)
+                    # Extract ground truth positions
+                    pos_abs = pos_abs_padded(data, config, device)
+                    pos_abs_flat = pos_abs.view(pos_abs.size(0), -1)
+    
+
+                    
+                    # Get the input data (e.g., xPDF)
+                    xPDF = eval(model_kwargs["x"]) if model_kwargs["x"] != "None" else None
+
+                    # Normalize xPDF data
+                    sct = xPDF[:,1,:]
+                    sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
+                    sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
+                    sct = (sct - sct_min) / (sct_max - sct_min)
+                    
+                    # Calculate loss using model's custom loss function
+                    # prediction is done in the loss function
+                    loss = model.loss(pos_abs_flat, sct)
+                    
+                    
+                else:
+                    # Standard approach for models without custom loss
+                    pred, truth = task_function(data, model, None, model_kwargs, device, config)
+                    loss = loss_function(pred, truth)
                 
                 # Backward pass
                 optimizer.zero_grad()
@@ -261,10 +298,10 @@ def run_benchmark(args):
             val_error = 0
             with torch.no_grad():
                 for data in val_loader:
-                    # print(data)
                     data = data.to(device)
-                    pred, truth = task_function(data, model, None, model_kwargs, device, config) 
-                    # print(pred.shape, truth.shape) # Pass None instead of secondary
+                    
+                    # For validation, we always use the task function to get predictions and ground truth
+                    pred, truth = task_function(data, model, None, model_kwargs, device, config)
                     metric = metric_function(pred, truth)
                     val_error += metric.item()
             
@@ -307,6 +344,11 @@ def run_benchmark(args):
             # Log metrics
             writer.add_scalar("Loss/train", train_loss, epoch)
             writer.add_scalar(f"{metric_name}/val", val_error, epoch)
+            
+            # Step the learning rate scheduler if it exists
+            if scheduler is not None:
+                scheduler.step()
+                writer.add_scalar("learning_rate", scheduler.get_last_lr()[0], epoch)
             
             print(f"Epoch: {epoch+1}/{config['Train_config']['epochs']}, Train Loss: {train_loss:.4f}, Val {metric_name}: {val_error:.4f}")
         
