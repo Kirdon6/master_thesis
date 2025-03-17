@@ -1,10 +1,12 @@
 # Configuration for VectorDiffusion model
 root: "./data"
 dataset: "CHILI-3K"
-graph_type: ""
+graph_type: "central"  # Use central atoms graph type for consistent 100-atom structures
 task: "AbsPositionRegressionxPDF"
 model: "VectorDiffusion"
 log_dir: "./logs"
+save_latest_model: true  # Save the latest model during training
+custom_loss: true  # Flag to indicate that the model uses its own loss function
 
 # Model configuration
 Model_config:
@@ -17,7 +19,7 @@ Model_config:
 
 # Training configuration
 Train_config:
-  batch_size: 32
+  batch_size: 16  # Reduced batch size to avoid memory issues
   learning_rate: 0.0001
   epochs: 100
   train_time: 86400  # 24 hours in seconds

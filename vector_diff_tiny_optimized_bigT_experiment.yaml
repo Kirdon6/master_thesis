@@ -1,0 +1,31 @@
+# Configuration for VectorDiffusion model with increased diffusion steps
+root: "./data"
+dataset: "CHILI-3K"
+graph_type: "central"  # Use central atoms graph type for consistent 100-atom structures
+task: "AbsPositionRegressionxPDF"
+model: "VectorDiffusion"
+log_dir: "./logs"
+save_latest_model: true  # Save the latest model during training
+custom_loss: true  # Flag to indicate that the model uses its own loss function
+
+# Model configuration - increased diffusion steps
+Model_config:
+  in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values
+  hidden_channels: 40  # Same as optimized tiny model
+  out_channels: 300  # Maximum 100 atoms, each with 3 coordinates
+  T: 100  # Significantly increased diffusion steps (from 30 to 100)
+  beta_1: 0.0001
+  beta_T: 0.015  # Same as optimized tiny model
+
+# Training configuration
+Train_config:
+  batch_size: 48  # Same as optimized tiny model
+  learning_rate: 0.0004  # Same as optimized tiny model
+  lr_scheduler: true  # Enable learning rate scheduler
+  lr_step_size: 75  # Same as optimized tiny model
+  lr_gamma: 0.7  # Same as optimized tiny model
+  epochs: 750  # Same as optimized tiny model
+  train_time: 172800  # 48 hours in seconds
+  max_patience: 9999  # Effectively disable early stopping
+  seeds: [42]  # Multiple seeds for statistical reliability
+  weight_decay: 0.00005  # Same as optimized tiny model 

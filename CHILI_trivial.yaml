@@ -32,4 +32,4 @@ Train_config:
   epochs: 100
   train_time: 3600  # Max training time in seconds
   max_patience: 10
-  seeds: [42]  # Multiple seeds for robust evaluation 
+  seeds: [42,43,44]  # Multiple seeds for robust evaluation 

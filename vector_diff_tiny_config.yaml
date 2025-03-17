@@ -1,0 +1,31 @@
+# Configuration for tiny VectorDiffusion model
+root: "./data"
+dataset: "CHILI-3K"
+graph_type: "central"  # Use central atoms graph type for consistent 100-atom structures
+task: "AbsPositionRegressionxPDF"
+model: "VectorDiffusion"
+log_dir: "./logs"
+save_latest_model: true  # Save the latest model during training
+custom_loss: true  # Flag to indicate that the model uses its own loss function
+
+# Model configuration - extremely reduced size
+Model_config:
+  in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values
+  hidden_channels: 32  # Extremely small hidden dimension
+  out_channels: 300  # Maximum 100 atoms, each with 3 coordinates
+  T: 25  # Minimal number of diffusion steps
+  beta_1: 0.0001
+  beta_T: 0.02
+
+# Training configuration
+Train_config:
+  batch_size: 64  # Larger batch size for faster training
+  learning_rate: 0.0005  # Higher learning rate for faster initial progress
+  lr_scheduler: true  # Enable learning rate scheduler
+  lr_step_size: 50  # Reduce learning rate every 50 epochs
+  lr_gamma: 0.6  # Reduce learning rate by 40% each step
+  epochs: 500  # Run for many epochs to see full learning curve
+  train_time: 86400  # 24 hours in seconds
+  max_patience: 9999  # Effectively disable early stopping
+  seeds: [42, 43, 44]  # Single seed to focus on one full training run
+  weight_decay: 0.0001  # Regularization 
