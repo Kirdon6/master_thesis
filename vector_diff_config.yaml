@@ -1,0 +1,25 @@
+# Configuration for VectorDiffusion model
+root: "./data"
+dataset: "CHILI-3K"
+graph_type: ""
+task: "AbsPositionRegressionxPDF"
+model: "VectorDiffusion"
+log_dir: "./logs"
+
+# Model configuration
+Model_config:
+  in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values
+  hidden_channels: 256
+  out_channels: 300  # Maximum 100 atoms, each with 3 coordinates
+  T: 100  # Number of diffusion steps
+  beta_1: 0.0001
+  beta_T: 0.02
+
+# Training configuration
+Train_config:
+  batch_size: 32
+  learning_rate: 0.0001
+  epochs: 100
+  train_time: 86400  # 24 hours in seconds
+  max_patience: 20
+  seeds: [42, 43, 44] 

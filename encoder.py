@@ -48,12 +48,11 @@ class Encoder(nn.Module):
                 raise ValueError(f"For Transformer, input_dim must be divisible by 8 (num_heads), got {input_dim}")
         
         if type == 'MLP':
-            # First flatten the input from [2, 6000] to [12000]
-            self.flatten = nn.Flatten()
+            # For MLP, we directly process the 1D input
             layers = []
             # First layer
             layers.extend([
-                nn.Linear(input_dim * 2, hidden_dim),
+                nn.Linear(input_dim, hidden_dim),
                 nn.BatchNorm1d(hidden_dim),
                 nn.ReLU(),
                 nn.Dropout(dropout)
@@ -70,6 +69,7 @@ class Encoder(nn.Module):
             self.encoder = nn.Sequential(*layers)
             
         elif type == 'Transformer':
+            # For Transformer, we need to reshape the input
             layers = []
             # Layer normalization for input
             layers.append(nn.LayerNorm(input_dim))
@@ -93,18 +93,16 @@ class Encoder(nn.Module):
                         nn.Dropout(dropout)
                     ])
             
-            layers.extend([
-                nn.Flatten(),
-                nn.Linear(hidden_dim * 2 if num_layers > 1 else input_dim * 2, output_dim),
-                nn.LayerNorm(output_dim)
-            ])
+            # Final linear layer to output dimension
+            layers.append(nn.Linear(input_dim, output_dim))
             self.encoder = nn.Sequential(*layers)
             
         elif type == 'CNN':
+            # For CNN, we need to add a channel dimension
             layers = []
             # First conv layer
             layers.extend([
-                nn.Conv1d(2, hidden_dim, kernel_size=3, padding=1),
+                nn.Conv1d(1, hidden_dim, kernel_size=3, padding=1),
                 nn.BatchNorm1d(hidden_dim),
                 nn.ReLU(),
                 nn.Dropout(dropout)
@@ -132,7 +130,7 @@ class Encoder(nn.Module):
         Forward pass of the encoder.
         
         Args:
-            x (torch.Tensor): Input tensor of shape [batch_size, 2, sequence_length]
+            x (torch.Tensor): Input tensor of shape [batch_size, sequence_length]
             
         Returns:
             torch.Tensor: Output tensor of shape [batch_size, output_dim]
@@ -144,11 +142,12 @@ class Encoder(nn.Module):
         if not isinstance(x, torch.Tensor):
             raise ValueError(f"Input must be a torch.Tensor, got {type(x)}")
         
-        if len(x.shape) != 3:
-            raise ValueError(f"Input must have 3 dimensions [batch_size, 2, sequence_length], got shape {x.shape}")
+        if len(x.shape) != 2:
+            raise ValueError(f"Input must have 2 dimensions [batch_size, sequence_length], got shape {x.shape}")
         
-        if x.shape[1] != 2:
-            raise ValueError(f"Input must have 2 channels, got {x.shape[1]} channels")
+        # For CNN, we need to add a channel dimension
+        if isinstance(self.encoder[0], nn.Conv1d):
+            x = x.unsqueeze(1)  # [batch_size, 1, sequence_length]
         
         # Forward pass
         z = self.encoder(x)

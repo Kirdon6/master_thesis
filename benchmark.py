@@ -11,6 +11,7 @@ from torch_geometric.seed import seed_everything
 
 from CHILI_centralAtoms import CHILI
 from baseline_model import BaselineMLP
+from vector_diff import VectorDiffusion  # Import the VectorDiffusion model
 
 def validate_dataset_atom_count(dataset, max_atoms, split_name):
     """Validate that all structures in the dataset have fewer atoms than max_atoms."""
@@ -106,6 +107,11 @@ def run_benchmark(args):
         "MLP": {
             "class": BaselineMLP,
             "kwargs": {"x": "None", "batch": "data.batch"},
+            "skip_training": False,
+        },
+        "VectorDiffusion": {
+            "class": VectorDiffusion,
+            "kwargs": {"x": "data.y['xPDF']", "batch": "data.batch"},
             "skip_training": False,
         },
     }

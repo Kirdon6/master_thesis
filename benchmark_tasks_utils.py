@@ -161,16 +161,42 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
-    sct = data.y['xPDF'][:,1,:]
+    
+    # Get xPDF data
+    xpdf = data.y['xPDF']
+    
+    # Normalize xPDF data
+    sct = xpdf[:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
-    # print(f"input shape: {sct.shape}")
-
-    evaluated_kwargs['x'] = sct
-    pred = model(**evaluated_kwargs)
-    # print(f"pred shape: {pred.shape}")
-    truth = pos_abs_padded(data, config_dict, device)
-    # print(f"truth shape: {truth.shape}" )
-
-    return pred, truth 
+    
+    # For VectorDiffusion, we need to pass the full xPDF data
+    if config_dict["model"] == "VectorDiffusion":
+        # Normalize both channels of xPDF
+        xpdf_norm = xpdf.clone()
+        for i in range(xpdf.shape[1]):
+            channel = xpdf[:,i,:]
+            channel_min = torch.min(channel, dim=-1, keepdim=True)[0]
+            channel_max = torch.max(channel, dim=-1, keepdim=True)[0]
+            xpdf_norm[:,i,:] = (channel - channel_min) / (channel_max - channel_min + 1e-8)
+        
+        # Use the normalized xPDF for the model
+        evaluated_kwargs['x'] = xpdf_norm
+        
+        # For training, we need to use the loss function
+        if model.training:
+            truth = pos_abs_padded(data, config_dict, device)
+            loss = model.loss(truth, xpdf_norm)
+            return truth, truth  # Return truth twice to calculate zero loss
+        else:
+            # For inference, use the forward method
+            pred = model(**evaluated_kwargs)
+            truth = pos_abs_padded(data, config_dict, device)
+            return pred, truth
+    else:
+        # For other models, use the standard approach
+        evaluated_kwargs['x'] = sct
+        pred = model(**evaluated_kwargs)
+        truth = pos_abs_padded(data, config_dict, device)
+        return pred, truth 
