@@ -477,7 +477,7 @@ class CHILI(Dataset):
     ) -> Optional[Union[List[int], None]]:
         """
         Split the dataset into train, validation and test sets. The indices of the split are saved to csv files in the processed directory.
-        The same split is applied to all three graph types (full, unit_cell, central).
+        For full and unit_cell graphs, the same split is applied. For central graphs, a separate split is created since some structures are skipped.
         """
 
         if validation_size is None:
@@ -485,8 +485,27 @@ class CHILI(Dataset):
 
         # Get statistics for all graph types
         df_stats_all = self.get_statistics(return_dataframe=True)
+        
+        # Create splits for full and unit_cell graphs
         df_stats = df_stats_all["full"]  # Use full graph statistics for splitting
+        
+        # For central graphs, we need to identify which indices have valid data
+        central_valid_indices = []
+        for idx in range(self.len()):
+            central_file_path = os.path.join(self.processed_dir + '_central', f"data_{idx}.pt")
+            if os.path.exists(central_file_path):
+                central_valid_indices.append(idx)
+        
+        # Create a dataframe with only valid central indices
+        df_stats_central = df_stats.loc[df_stats["idx"].isin(central_valid_indices)].reset_index(drop=True)
+        
+        # Create mapping from original indices to central indices
+        central_idx_mapping = {orig_idx: i for i, orig_idx in enumerate(central_valid_indices)}
+        
+        # Create reverse mapping from central indices to original indices
+        central_reverse_mapping = {i: orig_idx for i, orig_idx in enumerate(central_valid_indices)}
 
+        # Split for full and unit_cell graphs
         if split_strategy == "random":
             # Split data into train, validation and test sets
             train_idx, test_idx = train_test_split(
@@ -500,7 +519,7 @@ class CHILI(Dataset):
                 random_state = random_state
             )
 
-            # Save indices to csv files (only once)
+            # Save indices to csv files for full and unit_cell
             np.savetxt(
                 os.path.join(self.root, f"datasplit_{split_strategy}_train.csv"),
                 train_idx,
@@ -520,16 +539,65 @@ class CHILI(Dataset):
                 fmt="%i",
             )
 
-            # Update statistics dataframe for all graph types
-            for graph_type, df in df_stats_all.items():
-                df[f"{split_strategy.capitalize()} data split"] = ""
-                df[f"{split_strategy.capitalize()} data split"].loc[train_idx] = "Train"
-                df[f"{split_strategy.capitalize()} data split"].loc[validation_idx] = "Validation"
-                df[f"{split_strategy.capitalize()} data split"].loc[test_idx] = "Test"
+            # Update statistics dataframe for full and unit_cell
+            # Update full graph statistics
+            df_stats_all["full"][f"{split_strategy.capitalize()} data split"] = ""
+            df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split"] = "Train"
+            df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split"] = "Validation"
+            df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split"] = "Test"
+            
+            # Update unit_cell graph statistics
+            df_stats_all["unit_cell"][f"{split_strategy.capitalize()} data split"] = ""
+            df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split"] = "Train"
+            df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split"] = "Validation"
+            df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split"] = "Test"
+            
+            # Create separate split for central graphs
+            central_train_idx, central_test_idx = train_test_split(
+                np.arange(len(central_valid_indices)),
+                test_size = test_size,
+                random_state = random_state
+            )
+            central_train_idx, central_validation_idx = train_test_split(
+                central_train_idx,
+                test_size = validation_size / (1 - test_size),
+                random_state = random_state
+            )
+            
+            # Map central indices back to original indices for saving
+            central_train_orig = [central_reverse_mapping[idx] for idx in central_train_idx]
+            central_validation_orig = [central_reverse_mapping[idx] for idx in central_validation_idx]
+            central_test_orig = [central_reverse_mapping[idx] for idx in central_test_idx]
+            
+            # Save central indices
+            np.savetxt(
+                os.path.join(self.root, f"datasplit_{split_strategy}_central_train.csv"),
+                central_train_orig,
+                delimiter=",",
+                fmt="%i",
+            )
+            np.savetxt(
+                os.path.join(self.root, f"datasplit_{split_strategy}_central_validation.csv"),
+                central_validation_orig,
+                delimiter=",",
+                fmt="%i",
+            )
+            np.savetxt(
+                os.path.join(self.root, f"datasplit_{split_strategy}_central_test.csv"),
+                central_test_orig,
+                delimiter=",",
+                fmt="%i",
+            )
+            
+            # Update statistics dataframe for central
+            df_stats_all["central"][f"{split_strategy.capitalize()} data split"] = ""
+            df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_train_orig), f"{split_strategy.capitalize()} data split"] = "Train"
+            df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_validation_orig), f"{split_strategy.capitalize()} data split"] = "Validation"
+            df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_test_orig), f"{split_strategy.capitalize()} data split"] = "Test"
 
         elif split_strategy == "stratified":
             if stratify_distribution == "match":
-                # Split data into train, validation and test sets
+                # Split data into train, validation and test sets for full and unit_cell
                 train_idx, test_idx = train_test_split(
                     np.arange(self.len()),
                     test_size=test_size,
@@ -543,7 +611,7 @@ class CHILI(Dataset):
                     stratify=df_stats.loc[train_idx][stratify_on],
                 )
 
-                # Save indices to csv files (only once)
+                # Save indices to csv files for full and unit_cell
                 np.savetxt(
                     os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_train.csv'),
                     train_idx,
@@ -563,14 +631,66 @@ class CHILI(Dataset):
                     fmt="%i",
                 )
 
-                # Update statistics dataframe for all graph types
-                for graph_type, df in df_stats_all.items():
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on})"] = ""
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on})"].loc[train_idx] = "Train"
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on})"].loc[validation_idx] = "Validation"
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on})"].loc[test_idx] = "Test"
+                # Update statistics dataframe for full and unit_cell
+                # Update full graph statistics
+                df_stats_all["full"][f"{split_strategy.capitalize()} data split ({stratify_on})"] = ""
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Train"
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Validation"
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Test"
+                
+                # Update unit_cell graph statistics
+                df_stats_all["unit_cell"][f"{split_strategy.capitalize()} data split ({stratify_on})"] = ""
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Train"
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Validation"
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Test"
+                
+                # Create separate split for central graphs
+                central_train_idx, central_test_idx = train_test_split(
+                    np.arange(len(central_valid_indices)),
+                    test_size=test_size,
+                    random_state=random_state,
+                    stratify=df_stats_central[stratify_on],
+                )
+                central_train_idx, central_validation_idx = train_test_split(
+                    central_train_idx,
+                    test_size=validation_size / (1 - test_size),
+                    random_state=random_state,
+                    stratify=df_stats_central.loc[central_train_idx][stratify_on],
+                )
+                
+                # Map central indices back to original indices for saving
+                central_train_orig = [central_reverse_mapping[idx] for idx in central_train_idx]
+                central_validation_orig = [central_reverse_mapping[idx] for idx in central_validation_idx]
+                central_test_orig = [central_reverse_mapping[idx] for idx in central_test_idx]
+                
+                # Save central indices
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_central_train.csv'),
+                    central_train_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_central_validation.csv'),
+                    central_validation_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_central_test.csv'),
+                    central_test_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                
+                # Update statistics dataframe for central
+                df_stats_all["central"][f"{split_strategy.capitalize()} data split ({stratify_on})"] = ""
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_train_orig), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Train"
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_validation_orig), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Validation"
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_test_orig), f"{split_strategy.capitalize()} data split ({stratify_on})"] = "Test"
 
             elif stratify_distribution == "equal":
+                # For full and unit_cell
                 if n_samples_per_class == "max":
                     # Find the class with the least number of samples
                     min_samples = df_stats[stratify_on].value_counts().min()
@@ -614,7 +734,7 @@ class CHILI(Dataset):
                     stratify = df_stats.loc[train_idx][stratify_on],
                 )
 
-                # Save indices to csv files (only once)
+                # Save indices to csv files for full and unit_cell
                 np.savetxt(
                     os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_train.csv'),
                     train_idx,
@@ -634,12 +754,89 @@ class CHILI(Dataset):
                     fmt="%i",
                 )
 
-                # Update statistics dataframe for all graph types
-                for graph_type, df in df_stats_all.items():
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = ""
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"].loc[train_idx] = "Train"
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"].loc[validation_idx] = "Validation"
-                    df[f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"].loc[test_idx] = "Test"
+                # Update statistics dataframe for full and unit_cell
+                # Update full graph statistics
+                df_stats_all["full"][f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = ""
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Train"
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Validation"
+                df_stats_all["full"].loc[df_stats_all["full"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Test"
+                
+                # Update unit_cell graph statistics
+                df_stats_all["unit_cell"][f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = ""
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(train_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Train"
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(validation_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Validation"
+                df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(test_idx), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Test"
+                
+                # For central graphs
+                if n_samples_per_class == "max":
+                    # Find the class with the least number of samples
+                    min_samples_central = df_stats_central[stratify_on].value_counts().min()
+                elif isinstance(n_samples_per_class, int):
+                    min_samples_central = min(n_samples_per_class, df_stats_central[stratify_on].value_counts().min())
+                
+                # Randomly sample the same number of samples from each class
+                central_subset_idx = []
+                for group in df_stats_central[stratify_on].unique():
+                    central_subset_idx += list(
+                        df_stats_central[df_stats_central[stratify_on] == group]
+                        .sample(min_samples_central, random_state=random_state)
+                        .index
+                    )
+                
+                # Find the total number of samples
+                n_samples_central = len(central_subset_idx)
+                
+                # Find the number of samples to use for train, validation and test sets
+                n_test_central = int(n_samples_central * test_size)
+                n_validation_central = int((n_samples_central - n_test_central) * validation_size / (1 - test_size))
+                n_train_central = n_samples_central - n_test_central - n_validation_central
+                
+                # Split data into train, validation and test sets
+                central_train_idx, central_test_idx = train_test_split(
+                    central_subset_idx,
+                    train_size = n_train_central + n_validation_central,
+                    test_size = n_test_central,
+                    random_state = random_state,
+                    stratify = df_stats_central.loc[central_subset_idx][stratify_on],
+                )
+                central_train_idx, central_validation_idx = train_test_split(
+                    central_train_idx,
+                    train_size = n_train_central,
+                    test_size = n_validation_central,
+                    random_state = random_state,
+                    stratify = df_stats_central.loc[central_train_idx][stratify_on],
+                )
+                
+                # Map central indices back to original indices for saving
+                central_train_orig = [central_reverse_mapping[idx] for idx in central_train_idx]
+                central_validation_orig = [central_reverse_mapping[idx] for idx in central_validation_idx]
+                central_test_orig = [central_reverse_mapping[idx] for idx in central_test_idx]
+                
+                # Save central indices
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_central_train.csv'),
+                    central_train_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_central_validation.csv'),
+                    central_validation_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                np.savetxt(
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_central_test.csv'),
+                    central_test_orig,
+                    delimiter=",",
+                    fmt="%i",
+                )
+                
+                # Update statistics dataframe for central
+                df_stats_all["central"][f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = ""
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_train_orig), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Train"
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_validation_orig), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Validation"
+                df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(central_test_orig), f"{split_strategy.capitalize()} data split ({stratify_on}, Equal classes)"] = "Test"
 
         else:
             raise ValueError(
@@ -648,11 +845,14 @@ class CHILI(Dataset):
 
         # Save updated statistics for all graph types
         for graph_type, df in df_stats_all.items():
-            suffix = f"_{graph_type}" if graph_type else ""
+            suffix = f"_{graph_type}" if graph_type != "full" else ""
             df.to_pickle(os.path.join(self.root, f"dataset_statistics{suffix}.pkl"))
 
         if return_idx:
-            return train_idx, validation_idx, test_idx
+            if self.graph_type == "central":
+                return central_train_orig, central_validation_orig, central_test_orig
+            else:
+                return train_idx, validation_idx, test_idx
         else:
             return None
 
@@ -670,61 +870,60 @@ class CHILI(Dataset):
             stratify_on (str, optional): Feature to stratify on. Defaults to "Space group (Number)".
             stratify_distribution (str, optional): Distribution of stratification. Defaults to "match".
         """
+        # Determine if we should use central-specific splits
+        use_central_suffix = "_central" if self.graph_type == "central" else ""
+        
         if split_strategy == "random":
-
             # Load indices from csv files
             train_idx = np.loadtxt(
-                os.path.join(self.root, f"datasplit_{split_strategy}_train.csv"),
+                os.path.join(self.root, f"datasplit_{split_strategy}{use_central_suffix}_train.csv"),
                 delimiter=",",
                 dtype=int,
             )
             validation_idx = np.loadtxt(
-                os.path.join(self.root, f"datasplit_{split_strategy}_validation.csv"),
+                os.path.join(self.root, f"datasplit_{split_strategy}{use_central_suffix}_validation.csv"),
                 delimiter=",",
                 dtype=int,
             )
             test_idx = np.loadtxt(
-                os.path.join(self.root, f"datasplit_{split_strategy}_test.csv"),
+                os.path.join(self.root, f"datasplit_{split_strategy}{use_central_suffix}_test.csv"),
                 delimiter=",",
                 dtype=int,
             )
 
         elif split_strategy == "stratified":
-
             if stratify_distribution == "match":
-
                 # Load indices from csv files
                 train_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_train.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}{use_central_suffix}_train.csv'),
                     delimiter=",",
                     dtype=int,
                 )
                 validation_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_validation.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}{use_central_suffix}_validation.csv'),
                     delimiter=",",
                     dtype=int,
                 )
                 test_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_test.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}{use_central_suffix}_test.csv'),
                     delimiter=",",
                     dtype=int,
                 )
 
             elif stratify_distribution == "equal":
-
                 # Load indices from csv files
                 train_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_train.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}{use_central_suffix}_train.csv'),
                     delimiter=",",
                     dtype=int,
                 )
                 validation_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_validation.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}{use_central_suffix}_validation.csv'),
                     delimiter=",",
                     dtype=int,
                 )
                 test_idx = np.loadtxt(
-                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}_test.csv'),
+                    os.path.join(self.root, f'datasplit_{split_strategy}_{stratify_on.replace(" ","")}_{stratify_distribution}{use_central_suffix}_test.csv'),
                     delimiter=",",
                     dtype=int,
                 )
@@ -788,6 +987,14 @@ class CHILI(Dataset):
                 
                 for idx in range(self.len()):
                     try:
+                        # For central graphs, check if the file exists (some might be skipped)
+                        if graph_type == "central":
+                            central_file_path = os.path.join(self.processed_dir + '_central', f"data_{idx}.pt")
+                            if not os.path.exists(central_file_path):
+                                # Skip this index for central graphs
+                                stat_pbar.update(1)
+                                continue
+                        
                         graph = self.get(idx=idx)
                         df_stats.loc[df_stats.shape[0]] = [
                             idx,
@@ -817,14 +1024,30 @@ class CHILI(Dataset):
 
         if return_dataframe:
             if self.train_set is not None:
-                indices = (list(self.train_set.indices) + 
-                          list(self.validation_set.indices) + 
-                          list(self.test_set.indices))
-                return {
-                    "full": df_stats_all[""].loc[indices].reset_index(drop=True),
-                    "unit_cell": df_stats_all["unit_cell"].loc[indices].reset_index(drop=True),
-                    "central": df_stats_all["central"].loc[indices].reset_index(drop=True)
-                }
+                # For central graphs, we need to be careful about indices
+                if self.graph_type == "central":
+                    # Get the indices from the train/val/test sets
+                    train_indices = list(self.train_set.indices)
+                    val_indices = list(self.validation_set.indices)
+                    test_indices = list(self.test_set.indices)
+                    all_indices = train_indices + val_indices + test_indices
+                    
+                    # Return only the statistics for these indices
+                    return {
+                        "full": df_stats_all[""].loc[df_stats_all[""]["idx"].isin(all_indices)].reset_index(drop=True),
+                        "unit_cell": df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(all_indices)].reset_index(drop=True),
+                        "central": df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(all_indices)].reset_index(drop=True)
+                    }
+                else:
+                    # For full and unit_cell, we can use the original approach
+                    indices = (list(self.train_set.indices) + 
+                              list(self.validation_set.indices) + 
+                              list(self.test_set.indices))
+                    return {
+                        "full": df_stats_all[""].loc[df_stats_all[""]["idx"].isin(indices)].reset_index(drop=True),
+                        "unit_cell": df_stats_all["unit_cell"].loc[df_stats_all["unit_cell"]["idx"].isin(indices)].reset_index(drop=True),
+                        "central": df_stats_all["central"].loc[df_stats_all["central"]["idx"].isin(indices)].reset_index(drop=True)
+                    }
             else:
                 return {
                     "full": df_stats_all[""],
