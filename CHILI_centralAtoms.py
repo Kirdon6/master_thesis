@@ -302,64 +302,74 @@ class CHILI(Dataset):
                         dist = torch.norm(pos_abs, dim=1)
                         # Sort atoms by distance from origo
                         sorted_idx = torch.argsort(dist)
-                        # Take up to 100 most central atoms
-                        n_most_central_atoms = min(len(pos_abs), 100)  # Either all atoms or max 100
-                        selected_idx = sorted_idx[:n_most_central_atoms]
 
-                        # Select n most central atoms
-                        central_node_feat = node_feat[selected_idx]
-                        central_pos_abs = pos_abs[selected_idx]
-                        
-                        # Select subgraph containing central atoms
-                        central_edge_index, central_edge_attr = subgraph(selected_idx, edge_index, edge_attr, relabel_nodes=True)
-                        
-                        # Get fractional coordinates relative to the unit cell parameters
-                        atom_obj = Atoms(
-                            symbols = central_node_feat[:, 0].numpy(),
-                            positions = central_pos_abs.numpy(),
-                            cell = cell_params.numpy(),
-                        )
-                        
-                        central_pos_frac = torch.tensor(atom_obj.get_scaled_positions(), dtype=torch.float32)
-                        data_central = Data(
-                            data_id = raw_path.split("/")[-1].split(".")[0],
-                            x = central_node_feat,
-                            edge_index = central_edge_index,
-                            edge_attr = central_edge_attr,
-                            pos_abs = central_pos_abs,
-                            pos_frac = central_pos_frac,
+                        # Only create central atom graphs for structures with at least 100 atoms
+                        if len(pos_abs) >= 100:
+                            # Take exactly 100 most central atoms
+                            selected_idx = sorted_idx[:100]
+
+                            # Select 100 most central atoms
+                            central_node_feat = node_feat[selected_idx]
+                            central_pos_abs = pos_abs[selected_idx]
                             
-                            y=dict(
-                                crystal_type=crystal_type,
-                                space_group_symbol=space_group_symbol,
-                                space_group_number=space_group_number,
-                                crystal_system=crystal_system,
-                                crystal_system_number=crystal_system_number,
-                                atomic_species=atomic_species,#.unsqueeze(0),
-                                n_atomic_species=len(atomic_species),
-                                np_size=h5f["DiscreteParticleGraphs"][key]["NP size (Å)"][()],
-                                n_atoms=central_node_feat.shape[0],
-                                n_bonds=central_edge_index.shape[1],
+                            # Select subgraph containing central atoms
+                            central_edge_index, central_edge_attr = subgraph(selected_idx, edge_index, edge_attr, relabel_nodes=True)
+                            
+                            # Get fractional coordinates relative to the unit cell parameters
+                            atom_obj = Atoms(
+                                symbols = central_node_feat[:, 0].numpy(),
+                                positions = central_pos_abs.numpy(),
+                                cell = cell_params.numpy(),
+                            )
+                            
+                            central_pos_frac = torch.tensor(atom_obj.get_scaled_positions(), dtype=torch.float32)
+                            data_central = Data(
+                                data_id = raw_path.split("/")[-1].split(".")[0],
+                                x = central_node_feat,
+                                edge_index = central_edge_index,
+                                edge_attr = central_edge_attr,
+                                pos_abs = central_pos_abs,
+                                pos_frac = central_pos_frac,
+                                
+                                y=dict(
+                                    crystal_type=crystal_type,
+                                    space_group_symbol=space_group_symbol,
+                                    space_group_number=space_group_number,
+                                    crystal_system=crystal_system,
+                                    crystal_system_number=crystal_system_number,
+                                    atomic_species=atomic_species,#.unsqueeze(0),
+                                    n_atomic_species=len(atomic_species),
+                                    np_size=h5f["DiscreteParticleGraphs"][key]["NP size (Å)"][()],
+                                    n_atoms=central_node_feat.shape[0],
+                                    n_bonds=central_edge_index.shape[1],
 
-                                cell_params=cell_params.unsqueeze(0),
-                                unit_cell_x=unit_cell_node_feat,
-                                unit_cell_edge_index=unit_cell_edge_index,
-                                unit_cell_edge_attr=unit_cell_edge_attr,
-                                unit_cell_pos_abs=unit_cell_pos_abs,
-                                unit_cell_pos_frac=unit_cell_pos_frac,
-                                unit_cell_n_atoms=unit_cell_node_feat.shape[0],
-                                unit_cell_n_bonds=unit_cell_edge_index.shape[1],
+                                    cell_params=cell_params.unsqueeze(0),
+                                    unit_cell_x=unit_cell_node_feat,
+                                    unit_cell_edge_index=unit_cell_edge_index,
+                                    unit_cell_edge_attr=unit_cell_edge_attr,
+                                    unit_cell_pos_abs=unit_cell_pos_abs,
+                                    unit_cell_pos_frac=unit_cell_pos_frac,
+                                    unit_cell_n_atoms=unit_cell_node_feat.shape[0],
+                                    unit_cell_n_bonds=unit_cell_edge_index.shape[1],
 
-                                # Scattering data
-                                nd=torch.tensor(h5f["ScatteringData"][key]["ND"][:], dtype=torch.float32).unsqueeze(0),
-                                xrd=torch.tensor(h5f["ScatteringData"][key]["XRD"][:], dtype=torch.float32).unsqueeze(0),
-                                nPDF=torch.tensor(h5f["ScatteringData"][key]["nPDF"][:], dtype=torch.float32).unsqueeze(0),
-                                xPDF=torch.tensor(h5f["ScatteringData"][key]["xPDF"][:], dtype=torch.float32).unsqueeze(0),
-                                sans=torch.tensor(h5f["ScatteringData"][key]["SANS"][:], dtype=torch.float32).unsqueeze(0),
-                                saxs=torch.tensor(h5f["ScatteringData"][key]["SAXS"][:], dtype=torch.float32).unsqueeze(0),
-                            ),
-                        )
-                        
+                                    # Scattering data
+                                    nd=torch.tensor(h5f["ScatteringData"][key]["ND"][:], dtype=torch.float32).unsqueeze(0),
+                                    xrd=torch.tensor(h5f["ScatteringData"][key]["XRD"][:], dtype=torch.float32).unsqueeze(0),
+                                    nPDF=torch.tensor(h5f["ScatteringData"][key]["nPDF"][:], dtype=torch.float32).unsqueeze(0),
+                                    xPDF=torch.tensor(h5f["ScatteringData"][key]["xPDF"][:], dtype=torch.float32).unsqueeze(0),
+                                    sans=torch.tensor(h5f["ScatteringData"][key]["SANS"][:], dtype=torch.float32).unsqueeze(0),
+                                    saxs=torch.tensor(h5f["ScatteringData"][key]["SAXS"][:], dtype=torch.float32).unsqueeze(0),
+                                ),
+                            )
+                            
+                            # Save central atom data
+                            torch.save(data_central, os.path.join(self.processed_dir + '_central', f"data_{idx}.pt"))
+                        else:
+                            # Skip creating central atom graph for structures with fewer than 100 atoms
+                            # Create an empty file to maintain indexing consistency
+                            with open(os.path.join(self.processed_dir + '_central', f"data_{idx}.pt.skipped"), 'w') as f:
+                                f.write(f"Skipped: Structure has only {len(pos_abs)} atoms, fewer than required 100")
+
                         # Apply filters
                         if self.pre_filter is not None and not self.pre_filter(data):
                             continue
@@ -375,7 +385,6 @@ class CHILI(Dataset):
                         # Save to `self.processed_dir`.
                         torch.save(data, os.path.join(self.processed_dir, f"data_{idx}.pt"))
                         torch.save(data_unit_cell, os.path.join(self.processed_dir + '_unit_cell', f"data_{idx}.pt"))
-                        torch.save(data_central, os.path.join(self.processed_dir + '_central', f"data_{idx}.pt"))
 
                         # Update index
                         idx += 1
