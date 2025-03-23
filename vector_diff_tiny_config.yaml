@@ -8,12 +8,22 @@ log_dir: "./logs"
 save_latest_model: true  # Save the latest model during training
 custom_loss: true  # Flag to indicate that the model uses its own loss function
 
+# Enable Reporter for diffusion visualization
+use_reporter: true
+
+# Reporter configuration
+Reporter_config:
+  visualization_period: 25 # Visualize every 10 epochs
+  timesteps_to_visualize: [0,25, 50, 75, 100]  # Timesteps to visualize in the diffusion process
+  num_structures: 1  # Number of structures to visualize
+  figsize: [15, 8]  # Figure size (width, height) in inches
+
 # Model configuration - extremely reduced size
 Model_config:
   in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values
   hidden_channels: 32  # Extremely small hidden dimension
   out_channels: 300  # Maximum 100 atoms, each with 3 coordinates
-  T: 25  # Minimal number of diffusion steps
+  T: 100  # Minimal number of diffusion steps
   beta_1: 0.0001
   beta_T: 0.02
 
@@ -27,5 +37,5 @@ Train_config:
   epochs: 500  # Run for many epochs to see full learning curve
   train_time: 86400  # 24 hours in seconds
   max_patience: 9999  # Effectively disable early stopping
-  seeds: [42, 43, 44]  # Single seed to focus on one full training run
+  seeds: [42]  # Single seed to focus on one full training run
   weight_decay: 0.0001  # Regularization 
