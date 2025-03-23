@@ -12,6 +12,7 @@ from torch_geometric.seed import seed_everything
 from CHILI_centralAtoms import CHILI
 from baseline_model import BaselineMLP
 from vector_diff import VectorDiffusion  # Import the VectorDiffusion model
+from reporter import Reporter  # Import the Reporter class
 
 def validate_dataset_atom_count(dataset, max_atoms, split_name):
     """Validate that all structures in the dataset have fewer atoms than max_atoms."""
@@ -210,6 +211,12 @@ def run_benchmark(args):
         os.makedirs(save_dir, exist_ok=True)
         writer = SummaryWriter(save_dir)
         
+        # Initialize Reporter for diffusion visualization if enabled
+        use_reporter = config.get("use_reporter", False) and config['model'] == "VectorDiffusion"
+        reporter = None
+        if use_reporter:
+            reporter = Reporter(config, device, save_dir)
+        
         # Training setup
         max_training_time = config["Train_config"]["train_time"]
         start_time = time.time()
@@ -219,6 +226,9 @@ def run_benchmark(args):
         
         # Check if model uses custom loss
         uses_custom_loss = config.get("custom_loss", False) and hasattr(model, "loss")
+        
+        # Store a sample batch for final visualization
+        sample_batch = None
         
         # Training loop
         for epoch in range(config['Train_config']['epochs']):
@@ -253,9 +263,10 @@ def run_benchmark(args):
             # Training
             model.train()
             train_loss = 0
-            for data in train_loader:
-                data = data.to(device)
-                
+            visualization_done = False
+            
+            for batch_idx, data in enumerate(train_loader):
+                data = data.to(device)                
                 # Forward pass
                 if uses_custom_loss:
                     # For models with custom loss function (like VectorDiffusion)
@@ -263,8 +274,6 @@ def run_benchmark(args):
                     pos_abs = pos_abs_padded(data, config, device)
                     pos_abs_flat = pos_abs.view(pos_abs.size(0), -1)
     
-
-                    
                     # Get the input data (e.g., xPDF)
                     xPDF = eval(model_kwargs["x"]) if model_kwargs["x"] != "None" else None
 
@@ -277,7 +286,23 @@ def run_benchmark(args):
                     # Calculate loss using model's custom loss function
                     # prediction is done in the loss function
                     loss = model.loss(pos_abs_flat, sct)
+
+                    # Store the first batch for visualization if needed
+                    if sample_batch is None:
+                        sample_positions = pos_abs_flat[0].clone().unsqueeze(0)
+                        sample_xPDF= sct[0].clone().unsqueeze(0)
                     
+                    # Run reporter for visualization on the first batch of the epoch if it's time to visualize
+                    if reporter is not None and not visualization_done and reporter.should_visualize(epoch):
+                            
+                        reporter.visualize_diffusion(
+                            epoch, 
+                            model, 
+                            sample_positions,
+                            sample_xPDF,
+                            diffusion_steps=config.get("Model_config", {}).get("T", 100)
+                        )
+                        visualization_done = True
                     
                 else:
                     # Standard approach for models without custom loss
@@ -375,7 +400,6 @@ def run_benchmark(args):
         # Log test metrics
         writer.add_scalar(f"{metric_name}/test", test_error, epoch)
         print(f"Test {metric_name}: {test_error:.4f}")
-        
         # Close writer
         writer.close()
         
