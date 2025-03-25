@@ -123,7 +123,7 @@ def run_benchmark(args):
         pos_abs_from_xrd,
         pos_abs_from_xPDF,
         position_MAE,
-        pos_abs_padded
+
     )
     
     # Define task configurations
@@ -271,9 +271,8 @@ def run_benchmark(args):
                 if uses_custom_loss:
                     # For models with custom loss function (like VectorDiffusion)
                     # Extract ground truth positions
-                    pos_abs = pos_abs_padded(data, config, device)
-                    pos_abs_flat = pos_abs.view(pos_abs.size(0), -1)
-    
+                    pos_abs = data.pos_abs
+                    
                     # Get the input data (e.g., xPDF)
                     xPDF = eval(model_kwargs["x"]) if model_kwargs["x"] != "None" else None
 
@@ -285,11 +284,11 @@ def run_benchmark(args):
                     
                     # Calculate loss using model's custom loss function
                     # prediction is done in the loss function
-                    loss = model.loss(pos_abs_flat, sct)
+                    loss = model.loss(pos_abs, sct)
 
                     # Store the first batch for visualization if needed
                     if sample_batch is None:
-                        sample_positions = pos_abs_flat[0].clone().unsqueeze(0)
+                        sample_positions = pos_abs[0].clone().unsqueeze(0)
                         sample_xPDF= sct[0].clone().unsqueeze(0)
                     
                     # Run reporter for visualization on the first batch of the epoch if it's time to visualize
