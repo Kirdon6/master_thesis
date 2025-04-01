@@ -8,36 +8,18 @@ def position_MAE(
     ):
         """
         Calculates the mean absolute error between the predicted and true positions of the atoms in units of Ångstrøm.
-        Ignores padded atoms (where coordinates in true_xyz are 0) and calculates MAE per structure.
-        Expects inputs in format [batch_size, atoms*3].
+        Expects inputs in format [batch_size, num_atoms, 3] where all structures have exactly 100 atoms.
         """
-        # Reshape from [batch, atoms*3] to [batch, atoms, 3]
-        batch_size = pred_xyz.shape[0]
-        coords_per_atom = 3
-        num_atoms = pred_xyz.shape[1] // coords_per_atom
-        
-        pred_xyz = pred_xyz.view(batch_size, num_atoms, coords_per_atom)
-        true_xyz = true_xyz.view(batch_size, num_atoms, coords_per_atom)
-        
-        # Create mask for non-padded atoms (where coordinates are not 100)
-        valid_mask = (true_xyz < 100).all(dim=2)
+
         
         # Calculate Euclidean distances for all atoms
         atom_distances = torch.sqrt(torch.sum((pred_xyz - true_xyz)**2, dim=2))
         
-        # Apply mask to get only valid atoms
-        # Set distances for padded atoms to 0
-        masked_distances = atom_distances * valid_mask.float()
-        
-        # Count valid atoms per structure
-        valid_atoms_per_structure = valid_mask.sum(dim=1).float()
-        
-        # Sum distances per structure and divide by number of valid atoms
-        # This gives us the MAE per structure
-        structure_maes = masked_distances.sum(dim=1) / valid_atoms_per_structure
+        # Average distances for each structure
+        #structure_maes = atom_distances.mean(dim=1)
         
         # Return mean across all structures
-        return torch.mean(structure_maes)
+        return torch.mean(atom_distances)
 
 def pos_abs_padded(data, config_dict, device):
     """
@@ -65,19 +47,28 @@ def pos_abs_padded(data, config_dict, device):
 def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from SAXS data.
-    Returns tensors in [batch, atoms*3] format for MAE calculation.
+    Returns tensors in [batch_size, num_atoms, 3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
+    
+    # Get SAXS data and normalize
     sct = data.y['saxs'][:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
 
+    # Get ground truth positions
+    truth = data.pos_abs
+    batch_size = torch.max(data.batch) + 1
+    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    truth = truth.reshape(batch_size, num_atoms, 3)
+
+    # Pass normalized SAXS to the model
     evaluated_kwargs['x'] = sct
     pred = model(**evaluated_kwargs)
-    truth = pos_abs_padded(data, config_dict, device)
+
 
     
     return pred, truth
@@ -85,28 +76,35 @@ def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict)
 def pos_abs_from_xrd(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from XRD data.
-    Returns tensors in [batch, atoms*3] format for MAE calculation.
+    Returns tensors in [batch_size, num_atoms, 3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
         evaluated_kwargs[key] = eval(value)
+    
+    # Get XRD data and normalize
     sct = data.y['xrd'][:,1,:]
     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
 
+    # Get ground truth positions
+    truth = data.pos_abs
+    batch_size = torch.max(data.batch) + 1
+    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    truth = truth.reshape(batch_size, num_atoms, 3)
+
+    # Pass normalized XRD to the model
     evaluated_kwargs['x'] = sct
     pred = model(**evaluated_kwargs)
-    truth = pos_abs_padded(data, config_dict, device)
-    
-    
+
     
     return pred, truth
 
 def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict):
     """
     Predicts absolute positions from xPDF data.
-    Returns tensors in [batch, atoms*3] format for MAE calculation.
+    Returns tensors in [batch_size, num_atoms, 3] format for MAE calculation.
     """
     evaluated_kwargs = {}
     for key, value in model_kwargs.items():
@@ -121,20 +119,23 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
     sct = (sct - sct_min) / (sct_max - sct_min)
     
-    # For VectorDiffusion, we need to pass the full xPDF data
+    # Get ground truth positions
+    truth = data.pos_abs
+    batch_size = torch.max(data.batch) + 1
+    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    truth = truth.reshape(batch_size, num_atoms, 3)
+    
+    # For VectorDiffusion, we need to handle differently based on train/eval mode
     if config_dict["model"] == "VectorDiffusion":
-
-        
-        # Use the normalized xPDF for the model
-        evaluated_kwargs['x'] = sct       
-
-        # For inference, use the forward method
-        pred = model(**evaluated_kwargs)
-        truth = pos_abs_padded(data, config_dict, device)
-        return pred, truth
+        if model.training:
+            # During training, use the forward_training method which builds a computational graph
+            pred = model.forward_training(sct)
+        else:
+            # During evaluation, use the sampling method
+            model.eval()
+            pred = model(sct)
     else:
         # For other models, use the standard approach
-        evaluated_kwargs['x'] = sct
         pred = model(**evaluated_kwargs)
-        truth = pos_abs_padded(data, config_dict, device)
-        return pred, truth 
+    
+    return pred, truth 

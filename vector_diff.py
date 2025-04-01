@@ -3,13 +3,14 @@ import torch.nn as nn
 from encoder import Encoder
 
 class VectorPosNet(nn.Module):
-    """Neural network for predicting vector positions"""
+    """UNet-like neural network for predicting vector positions"""
     def __init__(self, cond_dim, hidden_dim, pos_dim):
         super(VectorPosNet, self).__init__()
 
         # Calculate the number of atoms from the position dimension
         self.num_atoms = pos_dim // 3
-
+        
+        # Time embedding
         self.time_embedding = nn.Sequential(
             nn.Linear(1, hidden_dim),
             nn.ReLU(),
@@ -18,6 +19,7 @@ class VectorPosNet(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
         )
 
+        # Condition embedding
         self.cond_embedding = nn.Sequential(
             nn.Linear(cond_dim, hidden_dim),
             nn.ReLU(),
@@ -25,33 +27,139 @@ class VectorPosNet(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
-
-        # Process positions in shape [batch_size, num_atoms, 3]
-        self.net = nn.Sequential(
-            nn.Linear(3 + hidden_dim * 2, hidden_dim),
+        
+        # Initial projection from position space to feature space
+        self.input_proj = nn.Linear(3, hidden_dim)
+        
+        # Downsampling path
+        self.down1 = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 3),
         )
+        
+        self.pool1 = nn.AvgPool1d(kernel_size=2, stride=2)
+        
+        self.down2 = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim*2),
+            nn.ReLU(),
+        )
+        
+        self.pool2 = nn.AvgPool1d(kernel_size=2, stride=2)
+        
+        self.down3 = nn.Sequential(
+            nn.Linear(hidden_dim*2, hidden_dim*2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*2, hidden_dim*4),
+            nn.ReLU(),
+        )
+        
+        self.pool3 = nn.AvgPool1d(kernel_size=5, stride=5)  # From 25 to 5 atoms
+        
+        # Bottleneck, combining with time and condition
+        self.bottleneck = nn.Sequential(
+            nn.Linear(hidden_dim*4 + hidden_dim, hidden_dim*4),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*4, hidden_dim*4),
+            nn.ReLU(),
+        )
+        
+        # Upsampling path
+        self.up3 = nn.Linear(hidden_dim*4, hidden_dim*4*5)  # Expand features for reshaping
+        self.up3_conv = nn.Sequential(
+            nn.Linear(hidden_dim*4, hidden_dim*2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim*2, hidden_dim*2),
+            nn.ReLU(),
+        )
+        
+        self.up2 = nn.Linear(hidden_dim*2, hidden_dim*2*2)  # Expand features for reshaping
+        self.up2_conv = nn.Sequential(
+            nn.Linear(hidden_dim*2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        
+        self.up1 = nn.Linear(hidden_dim, hidden_dim*2)  # Expand features for reshaping
+        self.up1_conv = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        
+        # Final projection back to position space
+        self.output_proj = nn.Linear(hidden_dim, 3)
 
     def forward(self, pos, time, cond):
         # Ensure time is properly shaped for the embedding
         if time.dim() == 1:
             time = time.unsqueeze(1).float()
         
-        time_emb = self.time_embedding(time)
-        cond_emb = self.cond_embedding(cond)
+        # Ensure positions are shaped [batch_size, num_atoms, 3]
+        batch_size = pos.shape[0]
         
-        # Expand time and condition embeddings to match atom dimension
-        time_emb = time_emb.unsqueeze(1).expand(-1, pos.shape[1], -1)
-        cond_emb = cond_emb.unsqueeze(1).expand(-1, pos.shape[1], -1)
+        # Create embeddings
+        time_emb = self.time_embedding(time)  # [batch, hidden_dim]
+        cond_emb = self.cond_embedding(cond)  # [batch, hidden_dim]
         
-        # Concatenate along feature dimension for each atom
-        x = torch.cat([pos, time_emb, cond_emb], dim=2)
+        # Initial projection of positions
+        x = self.input_proj(pos)  # [batch, 100, hidden_dim]
         
-        # Process each atom separately
-        return self.net(x)
+        # Add time embedding at the start
+        # Expand time embedding to match atom dimension
+        time_emb_expanded = time_emb.unsqueeze(1).expand(-1, pos.shape[1], -1)  # [batch, 100, hidden_dim]
+        
+        # Element-wise addition with position features
+        x = x + time_emb_expanded  # [batch, 100, hidden_dim]
+        
+        # Downsampling path
+        x1 = self.down1(x)  # [batch, 100, hidden_dim]
+        
+        # Apply pooling along atom dimension
+        x1_pool = x1.transpose(1, 2)  # [batch, hidden_dim, 100]
+        x1_pool = self.pool1(x1_pool)  # [batch, hidden_dim, 50]
+        x1_pool = x1_pool.transpose(1, 2)  # [batch, 50, hidden_dim]
+        
+        x2 = self.down2(x1_pool)  # [batch, 50, hidden_dim*2]
+        
+        x2_pool = x2.transpose(1, 2)  # [batch, hidden_dim*2, 50]
+        x2_pool = self.pool2(x2_pool)  # [batch, hidden_dim*2, 25]
+        x2_pool = x2_pool.transpose(1, 2)  # [batch, 25, hidden_dim*2]
+        
+        x3 = self.down3(x2_pool)  # [batch, 25, hidden_dim*4]
+        
+        x3_pool = x3.transpose(1, 2)  # [batch, hidden_dim*4, 25]
+        x3_pool = self.pool3(x3_pool)  # [batch, hidden_dim*4, 5]
+        x3_pool = x3_pool.transpose(1, 2)  # [batch, 5, hidden_dim*4]
+        
+        # Bottleneck - combine with condition embedding only
+        # Expand cond_emb to match atom dimension
+        cond_emb_expanded = cond_emb.unsqueeze(1).expand(-1, x3_pool.size(1), -1)  # [batch, 5, hidden_dim]
+        x_bottleneck = torch.cat([x3_pool, cond_emb_expanded], dim=2)  # [batch, 5, hidden_dim*4 + hidden_dim]
+        x_bottleneck = self.bottleneck(x_bottleneck)  # [batch, 5, hidden_dim*4]
+        
+        # Upsampling path
+        x = self.up3(x_bottleneck)  # [batch, 5, feature_dim]
+        x = x.reshape(batch_size, 25, x.size(2)//5)  # [batch, 25, feature_dim]
+        x = self.up3_conv(x)  # [batch, 25, reduced_dim]
+        
+        x = self.up2(x)  # [batch, 25, expanded_dim]
+        x = x.reshape(batch_size, 50, x.size(2)//2)  # [batch, 50, reduced_dim]
+        x = self.up2_conv(x)  # [batch, 50, base_dim]
+        
+        x = self.up1(x)  # [batch, 50, expanded_dim]
+        x = x.reshape(batch_size, 100, x.size(2)//2)  # [batch, 100, base_dim]
+        x = self.up1_conv(x)  # [batch, 100, base_dim]
+        
+        # Final projection back to position space
+        x = self.output_proj(x)  # [batch, 100, 3]
+        
+        return x
     
 
 class VectorDiffusion(nn.Module):
@@ -99,15 +207,15 @@ class VectorDiffusion(nn.Module):
         Returns:
             Predicted atom positions with shape [batch_size, num_atoms, 3]
         """
-
+        # During inference, sample from the model
         batch_size = x.shape[0]
-
+        
+        # Define output shape for atomic positions
+        shape = (batch_size, self.num_atoms, 3)
         
         # Sample from the model
-        positions = self.sample(batch_size, x)
-        
-        # Flatten positions to maintain compatibility with benchmark
-        # Remove this if the benchmark is updated to handle [batch_size, num_atoms, 3]
+        positions = self.sample(shape, x)
+
         return positions
 
     def forward_diffusion(self, x_0, t, epsilon):
@@ -190,14 +298,19 @@ class VectorDiffusion(nn.Module):
         Calculate ELBO (Evidence Lower Bound) for training
         
         Args:
-            x_0: Ground truth positions with shape [batch_size, num_atoms, 3]
+            x_0: Ground truth positions with shape [batch_size, num_atoms*3]
             cond: Conditioning data (xPDF) with shape [batch_size, 6000]
             
         Returns:
             ELBO value
         """
+        # Reshape x_0 to [batch_size, num_atoms, 3] if it's flattened
+        batch_size = x_0.shape[0]
+        if x_0.dim() == 2:
+            x_0 = x_0.view(batch_size, self.num_atoms, 3)
+        
         # Sample timestep
-        t = torch.randint(1, self.T, (x_0.shape[0],), device=x_0.device)
+        t = torch.randint(1, self.T, (batch_size,), device=x_0.device)
         
         # Get latent embedding
         latent_emb = self.encoder(cond)
@@ -222,7 +335,7 @@ class VectorDiffusion(nn.Module):
         Calculate loss for training
         
         Args:
-            x_0: Ground truth positions with shape [batch_size, num_atoms, 3]
+            x_0: Ground truth positions with shape [batch_size, num_atoms*3]
             cond: Conditioning data (xPDF) with shape [batch_size, 6000]
             
         Returns:
@@ -263,6 +376,54 @@ class VectorDiffusion(nn.Module):
             x_t = self.reverse_diffusion(x_t, t_tensor, noise, cond)
         
         return x_t
+    
+    def forward_training(self, cond):
+        """
+        Method for training with standard loss functions (like SmoothL1Loss).
+        Unlike the forward method, this will create a computational graph for backpropagation.
+        
+        Args:
+            cond: Conditioning data (xPDF) with shape [batch_size, 6000]
+            
+        Returns:
+            Predicted atom positions with shape [batch_size, num_atoms, 3]
+        """
+        # Get batch size
+        batch_size = cond.shape[0]
+        
+        # Define output shape for atomic positions
+        shape = (batch_size, self.num_atoms, 3)
+        
+        # Get device from the model parameters
+        device = next(self.parameters()).device
+        
+        # Get latent embedding from encoder
+        latent_emb = self.encoder(cond)
+        
+        # Start from random noise
+        x_t = torch.randn(shape, device=device)
+        
+        # Perform a single step of reverse diffusion from timestep 1
+        # This will create a computational graph for backpropagation
+        t_tensor = torch.ones((batch_size,), device=device, dtype=torch.long)
+        t_normalized = t_tensor.float() / self.T
+        
+        # Predict the noise using the denoiser
+        predicted_noise = self.denoiser(x_t, t_normalized.unsqueeze(1), latent_emb)
+        
+        # Use the predicted noise to get a cleaner sample
+        # This is a simplified version of the reverse diffusion process,
+        # but it will create a computational graph
+        alpha_t = self.alphas[t_tensor].view(batch_size, 1, 1)
+        beta_t = self.betas[t_tensor].view(batch_size, 1, 1)
+        alpha_bar_t = self.alpha_bars[t_tensor].view(batch_size, 1, 1)
+        
+        # Calculate mean for the reverse process
+        x_0_pred = (1.0 / torch.sqrt(alpha_t)) * (
+            x_t - (beta_t / torch.sqrt(1.0 - alpha_bar_t)) * predicted_noise
+        )
+        
+        return x_0_pred
 
 
 

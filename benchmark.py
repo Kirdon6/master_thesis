@@ -8,6 +8,7 @@ import pandas as pd
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.loader import DataLoader
 from torch_geometric.seed import seed_everything
+from torch_geometric.utils import unbatch
 
 from CHILI_centralAtoms import CHILI
 from baseline_model import BaselineMLP
@@ -266,47 +267,36 @@ def run_benchmark(args):
             visualization_done = False
             
             for batch_idx, data in enumerate(train_loader):
-                data = data.to(device)                
-                # Forward pass
-                if uses_custom_loss:
-                    # For models with custom loss function (like VectorDiffusion)
-                    # Extract ground truth positions
-                    pos_abs = data.pos_abs
-                    
-                    # Get the input data (e.g., xPDF)
+                data = data.to(device)
+                
+                # Forward pass - use standard task function and loss for all models
+                pred, truth = task_function(data, model, None, model_kwargs, device, config)
+                loss = loss_function(pred, truth)
+                
+                # Store a sample batch for visualization if needed
+                if sample_batch is None and config['model'] == "VectorDiffusion":
+                    # Get the input data for visualization
                     xPDF = eval(model_kwargs["x"]) if model_kwargs["x"] != "None" else None
-
-                    # Normalize xPDF data
                     sct = xPDF[:,1,:]
                     sct_min = torch.min(sct, dim=-1, keepdim=True)[0]
                     sct_max = torch.max(sct, dim=-1, keepdim=True)[0]
                     sct = (sct - sct_min) / (sct_max - sct_min)
                     
-                    # Calculate loss using model's custom loss function
-                    # prediction is done in the loss function
-                    loss = model.loss(pos_abs, sct)
-
-                    # Store the first batch for visualization if needed
-                    if sample_batch is None:
-                        sample_positions = pos_abs[0].clone().unsqueeze(0)
-                        sample_xPDF= sct[0].clone().unsqueeze(0)
-                    
-                    # Run reporter for visualization on the first batch of the epoch if it's time to visualize
-                    if reporter is not None and not visualization_done and reporter.should_visualize(epoch):
-                            
-                        reporter.visualize_diffusion(
-                            epoch, 
-                            model, 
-                            sample_positions,
-                            sample_xPDF,
-                            diffusion_steps=config.get("Model_config", {}).get("T", 100)
-                        )
-                        visualization_done = True
-                    
-                else:
-                    # Standard approach for models without custom loss
-                    pred, truth = task_function(data, model, None, model_kwargs, device, config)
-                    loss = loss_function(pred, truth)
+                    sample_positions = truth[0].clone().unsqueeze(0)
+                    sample_xPDF = sct[0].clone().unsqueeze(0)
+                
+                # Run reporter for visualization if needed
+                if reporter is not None and not visualization_done and reporter.should_visualize(epoch) and batch_idx == 0:
+                    model.eval()
+                    reporter.visualize_diffusion(
+                        epoch, 
+                        model, 
+                        sample_positions,
+                        sample_xPDF,
+                        diffusion_steps=config.get("Model_config", {}).get("T", 100)
+                    )
+                    visualization_done = True
+                    model.train()
                 
                 # Backward pass
                 optimizer.zero_grad()

@@ -105,6 +105,7 @@ class Reporter:
             
             
             # Create visualization
+            model.train()
             self._create_visualization(epoch, sample_positions, forward_positions, reverse_positions)
 
     def _create_visualization(
