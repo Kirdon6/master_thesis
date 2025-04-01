@@ -8,6 +8,16 @@ log_dir: "./logs"
 save_latest_model: true  # Save the latest model during training
 custom_loss: true  # Flag to indicate that the model uses its own loss function
 
+# Enable Reporter for diffusion visualization
+use_reporter: true
+
+# Reporter configuration
+Reporter_config:
+  visualization_period: 25 # Visualize every 10 epochs
+  timesteps_to_visualize: [0,25, 50]  # Timesteps to visualize in the diffusion process
+  num_structures: 1  # Number of structures to visualize
+  figsize: [15, 8]  # Figure size (width, height) in inches
+
 # Model configuration - significantly reduced size
 Model_config:
   in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values

@@ -14,16 +14,16 @@ use_reporter: true
 # Reporter configuration
 Reporter_config:
   visualization_period: 25 # Visualize every 10 epochs
-  timesteps_to_visualize: [0,25, 50, 75, 100]  # Timesteps to visualize in the diffusion process
+  timesteps_to_visualize: [0,2,5,7,10]  # Timesteps to visualize in the diffusion process
   num_structures: 1  # Number of structures to visualize
   figsize: [15, 8]  # Figure size (width, height) in inches
 
 # Model configuration - extremely reduced size
 Model_config:
   in_channels: 6000  # xPDF data has shape [2, 6000], we only use the 6000 y-values
-  hidden_channels: 32  # Extremely small hidden dimension
+  hidden_channels: 64  # Extremely small hidden dimension
   out_channels: 300  # Maximum 100 atoms, each with 3 coordinates
-  T: 100  # Minimal number of diffusion steps
+  T: 10  # Minimal number of diffusion steps
   beta_1: 0.0001
   beta_T: 0.02
 
@@ -32,8 +32,8 @@ Train_config:
   batch_size: 64  # Larger batch size for faster training
   learning_rate: 0.0005  # Higher learning rate for faster initial progress
   lr_scheduler: true  # Enable learning rate scheduler
-  lr_step_size: 50  # Reduce learning rate every 50 epochs
-  lr_gamma: 0.6  # Reduce learning rate by 40% each step
+  lr_step_size: 100  # Reduce learning rate every 50 epochs
+  lr_gamma: 0.8  # Reduce learning rate by 40% each step
   epochs: 500  # Run for many epochs to see full learning curve
   train_time: 86400  # 24 hours in seconds
   max_patience: 30  # Effectively disable early stopping
