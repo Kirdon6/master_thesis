@@ -120,7 +120,7 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     sct = (sct - sct_min) / (sct_max - sct_min)
     
     # Get ground truth positions
-    truth = data.pos_abs
+    truth = data.pos_frac
     batch_size = torch.max(data.batch) + 1
     num_atoms = config_dict['Model_config']['out_channels'] // 3
     truth = truth.reshape(batch_size, num_atoms, 3)

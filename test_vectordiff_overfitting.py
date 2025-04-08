@@ -29,7 +29,7 @@ def create_small_dataset(dataset, num_samples=5):
 def validate_dataset_atom_count(dataset, max_atoms, split_name):
     """Validate that all structures have fewer atoms than max_atoms."""
     for i, data in enumerate(dataset):
-        num_atoms = data.pos_abs.shape[0]
+        num_atoms = data.pos_frac.shape[0]
         if num_atoms > max_atoms:
             raise ValueError(f"Structure {i} in {split_name} set has {num_atoms} atoms, which exceeds the maximum of {max_atoms}")
     return True
