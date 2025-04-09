@@ -19,9 +19,9 @@ def validate_dataset_atom_count(dataset, max_atoms, split_name):
     """Validate that all structures in the dataset have fewer atoms than max_atoms."""
     for idx in dataset.indices:
         data = dataset.dataset[idx]
-        if len(data.pos_abs) > max_atoms:
+        if len(data.pos_frac) > max_atoms:
             raise ValueError(
-                f"Structure at index {idx} in {split_name} set has {len(data.pos_abs)} atoms, "
+                f"Structure at index {idx} in {split_name} set has {len(data.pos_frac)} atoms, "
                 f"which exceeds the maximum of {max_atoms} atoms supported by the model. "
                 f"Increase Model_config.out_channels or use a dataset with smaller structures."
             )
@@ -52,7 +52,7 @@ def run_benchmark(args):
         "AbsPositionRegressionSAXS",
     ]:
         # Calculate maximum atoms the model can handle
-        max_atoms = config["Model_config"]["out_channels"] // 3
+        max_atoms = config["Model_config"]["num_atoms"]
         
         # Validate that all structures have fewer atoms than max_atoms
         print(f"Validating dataset (max atoms: {max_atoms})...")

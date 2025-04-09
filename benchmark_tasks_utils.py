@@ -62,7 +62,7 @@ def pos_abs_from_saxs(data, model, secondary, model_kwargs, device, config_dict)
     # Get ground truth positions
     truth = data.pos_abs
     batch_size = torch.max(data.batch) + 1
-    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    num_atoms = config_dict['Model_config']['num_atoms']
     truth = truth.reshape(batch_size, num_atoms, 3)
 
     # Pass normalized SAXS to the model
@@ -91,7 +91,7 @@ def pos_abs_from_xrd(data, model, secondary, model_kwargs, device, config_dict):
     # Get ground truth positions
     truth = data.pos_abs
     batch_size = torch.max(data.batch) + 1
-    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    num_atoms = config_dict['Model_config']['num_atoms']
     truth = truth.reshape(batch_size, num_atoms, 3)
 
     # Pass normalized XRD to the model
@@ -122,7 +122,7 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
     # Get ground truth positions
     truth = data.pos_frac
     batch_size = torch.max(data.batch) + 1
-    num_atoms = config_dict['Model_config']['out_channels'] // 3
+    num_atoms = config_dict['Model_config']['num_atoms']
     truth = truth.reshape(batch_size, num_atoms, 3)
     
     # For VectorDiffusion, we need to handle differently based on train/eval mode
@@ -136,6 +136,6 @@ def pos_abs_from_xPDF(data, model, secondary, model_kwargs, device, config_dict)
             pred = model(sct)
     else:
         # For other models, use the standard approach
-        pred = model(**evaluated_kwargs)
+        pred = model(sct)
     
     return pred, truth 

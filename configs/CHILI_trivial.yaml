@@ -20,7 +20,7 @@ Data_config:
 Model_config:
   in_channels: 6000  # Input dimension for xPDF data (6000 values)
   hidden_channels: 64  # As specified in the image: hidden layer size of 128
-  out_channels: 300  # Output dimension (3 * max_atoms)
+  num_atoms: 100  # Output dimension (3 * max_atoms)
   num_layers: 1  # As specified in the image: 4-layer MLP
   dropout: 0.5
   # activation: "ReLU"  # As specified in the image: ReLU activation
