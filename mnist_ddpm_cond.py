@@ -657,39 +657,102 @@ def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='sample
 class VectorConditionedDataset(torch.utils.data.Dataset):
     """
     Dataset wrapper that pairs images with vector conditional information.
+    Also includes atom types as an additional channel.
     """
-    def __init__(self, data, model_type='unknown'):
+    def __init__(self, data, model_type='unknown', atom_mapping_path=None):
         """
         Parameters
         ----------
-        images: torch.tensor
-            Image dataset of shape [n_samples, channels, height, width]
-        conditioning_vectors: torch.tensor
-            Conditioning vectors of shape [n_samples, cond_dim]
+        data: list
+            List of data batches
+        model_type: str
+            Type of model ('pos_abs' or 'pos_frac')
+        atom_mapping_path: str, optional
+            Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
         """
         self.images = []
+        self.atom_types = []
         self.conditioning = []
+        self.atom_mapping = None
+        self.num_categories = 0
+        
+        # Load atom type mapping if provided
+        if atom_mapping_path:
+            try:
+                import json
+                with open(atom_mapping_path, 'r') as f:
+                    self.atom_mapping = json.load(f)
+                self.num_categories = self.atom_mapping['num_categories']
+                print(f"Loaded atom mapping with {self.num_categories} categories")
+            except Exception as e:
+                print(f"Warning: Failed to load atom mapping: {e}")
+                self.atom_mapping = None
+        
+        has_atom_types = self.atom_mapping is not None
+        
         for batch in data:
+            # Get position data (xyz coordinates)
             if model_type == 'pos_abs':
                 pos = batch.pos_abs
             else:
                 pos = batch.pos_frac
-
+            
+            # Reshape positions to [batch_size, 3, height, width]
             pos_reshaped = pos.view(-1, 3, 10, 10)
             self.images.append(pos_reshaped)
-            xpdf = batch.y['xPDF']
             
+            # Process atom types separately if mapping is available
+            if has_atom_types and hasattr(batch, 'x'):
+                # Extract atom numbers (assuming the first column of x contains atom numbers)
+                atom_numbers = batch.x[:, 0].cpu()
+                
+                # Map atom numbers to indices using the mapping
+                atom_num_to_idx = self.atom_mapping['atom_num_to_idx']
+                atom_indices = torch.zeros_like(atom_numbers)
+                
+                # Convert each atom number to its corresponding index
+                for i, atom_num in enumerate(atom_numbers):
+                    atom_num_int = int(atom_num.item())
+                    # Default to 0 if atom type not in mapping
+                    atom_indices[i] = int(atom_num_to_idx.get(str(atom_num_int), 0))
+                
+                # Keep atom indices as discrete values (no normalization)
+                # Reshape to match position data shape
+                atom_indices_reshaped = atom_indices.view(-1, 1, 10, 10)
+                self.atom_types.append(atom_indices_reshaped)
+            
+            # Get conditioning vector (xPDF)
+            xpdf = batch.y['xPDF']
             self.conditioning.append(xpdf[:,1,:])
-        assert len(self.images) == len(self.conditioning), "Number of images and conditioning vectors must match"
+        
+        # Combine position data
         self.images = torch.cat(self.images, dim=0)
+        
+        # Combine atom types if available
+        if has_atom_types:
+            self.atom_types = torch.cat(self.atom_types, dim=0)
+        
+        # Combine conditioning data
         self.conditioning = torch.cat(self.conditioning, dim=0)
         self.conditioning = self.conditioning.squeeze(1)
+        
+        # Report dataset info
+        print(f"Created dataset with {len(self.images)} samples, "
+              f"image shape: {self.images.shape}, "
+              f"conditioning shape: {self.conditioning.shape}")
+        if has_atom_types:
+            print(f"Atom types shape: {self.atom_types.shape}, "
+                  f"with {self.num_categories} categories")
         
     def __len__(self):
         return len(self.images)
     
     def __getitem__(self, idx):
-        return self.images[idx], self.conditioning[idx]
+        # Return positions and atom types as separate tensors
+        if len(self.atom_types) > 0:
+            return (self.images[idx], self.atom_types[idx]), self.conditioning[idx]
+        else:
+            return self.images[idx], self.conditioning[idx]
 
 
 def save_metrics_to_csv(metrics, filepath, model_params=None):
@@ -738,7 +801,8 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
 
 def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1000, learning_rate=1e-3, 
                                   epochs=100, batch_size=256, ema=True, cond_dim=6000, 
-                                  cond_embed_dim=64, image_size=(10, 10), channels=3, model_type='unknown'):
+                                  cond_embed_dim=64, image_size=(10, 10), model_type='unknown',
+                                  atom_mapping_path=None):
     """
     Train a vector-conditioned DDPM model on RGB images
     
@@ -766,10 +830,10 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         Dimensionality to embed the conditioning vectors to
     image_size: tuple
         Size of the images (height, width)
-    channels: int
-        Number of color channels in the images
     model_type: str
         Type of model being trained (e.g., 'pos_abs' or 'pos_frac')
+    atom_mapping_path: str, optional
+        Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
         
     Returns
     -------
@@ -781,10 +845,14 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Create output directory for sample images
     import os
     
+    # Determine number of channels based on whether atom mapping is provided
+    channels = 4 if atom_mapping_path else 3
+    
     # Create a unique folder for this model run based on parameters
     import time
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    model_params = f"{model_type}_T{T}_lr{learning_rate}_epochs{epochs}_batch{batch_size}_cond{cond_embed_dim}_{timestamp}"
+    atom_suffix = "_with_atoms" if atom_mapping_path else ""
+    model_params = f"{model_type}_T{T}_lr{learning_rate}_epochs{epochs}_batch{batch_size}_cond{cond_embed_dim}{atom_suffix}_{timestamp}"
     samples_dir = os.path.join("training_samples", model_params)
     
     if not os.path.exists("training_samples"):
@@ -793,10 +861,23 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     if not os.path.exists(samples_dir):
         os.makedirs(samples_dir)
     
+    # Load atom type mapping if provided
+    atom_mapping = None
+    num_atom_categories = 0
+    if atom_mapping_path:
+        try:
+            import json
+            with open(atom_mapping_path, 'r') as f:
+                atom_mapping = json.load(f)
+            num_atom_categories = atom_mapping['num_categories']
+            print(f"Loaded atom mapping with {num_atom_categories} categories for visualization")
+        except Exception as e:
+            print(f"Warning: Could not load atom mapping for visualization: {e}")
+    
     # Create custom datasets that pair images with conditioning vectors
-    train_dataset = VectorConditionedDataset(train_data, model_type=model_type) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
-    val_dataset = VectorConditionedDataset(val_data, model_type=model_type) if val_data is not None and not isinstance(val_data, torch.utils.data.Dataset) else val_data
-    test_dataset = VectorConditionedDataset(test_data, model_type=model_type) if test_data is not None and not isinstance(test_data, torch.utils.data.Dataset) else test_data
+    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
+    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if val_data is not None and not isinstance(val_data, torch.utils.data.Dataset) else val_data
+    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if test_data is not None and not isinstance(test_data, torch.utils.data.Dataset) else test_data
 
     # Select device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -831,9 +912,27 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         batch_size=2,  # Only need a small batch for visualization
         shuffle=True
     )
-    for images, conds in train_dataloader:
-        ground_truth_images = images[:2].to(device)  # Select first 2 images
-        ground_truth_conds = conds[:2].to(device)    # Select corresponding conditioning vectors
+    
+    # Initialize storage for ground truth data
+    ground_truth_images = []
+    ground_truth_atom_types = []
+    ground_truth_conds = []
+    
+    # Get reference data for visualization
+    for batch in train_dataloader:
+        # Check if this is the new format with atom types ((positions, atom_types), cond)
+        if isinstance(batch[0], tuple) and len(batch[0]) == 2:
+            (positions, atom_types), conds = batch
+            ground_truth_images = positions[:2].to(device)
+            ground_truth_atom_types = atom_types[:2].to(device)
+            ground_truth_conds = conds[:2].to(device)
+        else:
+            # Traditional format (pos, cond)
+            positions, conds = batch
+            ground_truth_images = positions[:2].to(device)
+            ground_truth_conds = conds[:2].to(device)
+            # Empty atom types
+            ground_truth_atom_types = []
         break  # Only need the first batch
 
     def reporter(model, epoch):
@@ -848,6 +947,11 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             # Store all 3D sample points for later plotting
             all_gt_points = []
             all_sample_points = []
+            all_gt_atom_types = []
+            all_sample_atom_types = []
+            
+            # Check if we have atom types data
+            have_atom_types = len(ground_truth_atom_types) > 0
             
             # For each ground truth image
             for gt_idx in range(len(ground_truth_images)):
@@ -855,34 +959,50 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 gt_image = ground_truth_images[gt_idx:gt_idx+1]
                 cond = ground_truth_conds[gt_idx:gt_idx+1]
                 
+                # Get ground truth atom type if available
+                gt_atom_type = None
+                if have_atom_types:
+                    gt_atom_type = ground_truth_atom_types[gt_idx:gt_idx+1]
+                
                 # Generate 3 samples for each ground truth image
                 samples = model.sample(3, cond).cpu()
                 
-                # For 2D image visualization, normalize to [0,1]
-                gt_normalized_img = (gt_image.cpu() + 1) / 2
-                gt_normalized_img = gt_normalized_img.clamp(0.0, 1.0)
-                
-                samples_normalized_img = (samples + 1) / 2 
-                samples_normalized_img = samples_normalized_img.clamp(0.0, 1.0)
+                # Use raw data for visualization
+                gt_normalized_img = gt_image.cpu()
+                samples_normalized_img = samples.cpu()
 
                 # Combine ground truth as first image followed by 3 samples (1 row)
                 row = torch.cat([gt_normalized_img, samples_normalized_img], dim=0)
                 all_rows.append(row)
                 
                 # Extract ground truth points for 3D plotting
-                gt_points = gt_image[0].cpu().permute(1, 2, 0)  # [height, width, channels]
+                gt_points = gt_normalized_img[0, :3].permute(1, 2, 0)  # [height, width, channels]
                 gt_points = gt_points.reshape(-1, 3)  # [height*width, channels] = [100, 3]
                 all_gt_points.append(gt_points)
                 
                 # Extract sample points for 3D plotting
                 row_samples = []
+                row_atom_types = []
                 for i in range(3):
-                    sample_points = samples[i].permute(1, 2, 0)
+                    sample_points = samples_normalized_img[i, :3].permute(1, 2, 0)
                     sample_points = sample_points.reshape(-1, 3)
                     row_samples.append(sample_points)
+                    
+                    # Extract atom types if available (4th channel)
+                    if channels == 4:
+                        sample_atom_type = samples[i, 3].view(-1)
+                        row_atom_types.append(sample_atom_type)
+                
                 all_sample_points.append(row_samples)
+                
+                # Store ground truth atom types if available
+                if have_atom_types:
+                    gt_atom = gt_atom_type[0].cpu().view(-1)
+                    all_gt_atom_types.append(gt_atom)
+                    if row_atom_types:
+                        all_sample_atom_types.append(row_atom_types)
             
-            # 1. Create the 2D image grid visualization
+            # 1. Create the 2D image grid visualization (using only coordinate channels)
             combined = torch.cat(all_rows, dim=0)
             grid = utils.make_grid(combined, nrow=4)
             plt.figure(figsize=(12, 3 * len(ground_truth_images)))
@@ -923,20 +1043,52 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 # Plot ground truth as first plot in each row
                 plot_position = row_idx * 4 + 1  # 1 or 5
                 ax_gt = fig.add_subplot(2, 4, plot_position, projection='3d')
-                ax_gt.scatter(all_gt_points[row_idx][:, 0], all_gt_points[row_idx][:, 1], all_gt_points[row_idx][:, 2], 
-                              c='blue', marker='o', s=15, alpha=0.8)
-                style_3d_axes(ax_gt, f'GT {row_idx+1} - Reverse t=0')
+                
+                # If atom types are available, use them for coloring
+                if have_atom_types:
+                    # Use integer categories directly for coloring (no normalization)
+                    colors = all_gt_atom_types[row_idx].numpy()
+                    scatter = ax_gt.scatter(all_gt_points[row_idx][:, 0], 
+                                          all_gt_points[row_idx][:, 1], 
+                                          all_gt_points[row_idx][:, 2], 
+                                          c=colors, cmap='tab10', marker='o', s=25, alpha=0.8)
+                    
+                    # Add color bar for the first row
+                    if row_idx == 0 and num_atom_categories > 0:
+                        cbar = plt.colorbar(scatter, ax=ax_gt, ticks=range(num_atom_categories))
+                        if atom_mapping:
+                            # Try to add atom labels if available
+                            idx_to_atom_num = atom_mapping.get('idx_to_atom_num', {})
+                            if idx_to_atom_num:
+                                # Only show a subset of labels if there are many categories
+                                if num_atom_categories <= 10:
+                                    labels = [f"Z={idx_to_atom_num[str(i)]}" for i in range(num_atom_categories)]
+                                    cbar.set_ticklabels(labels)
+                else:
+                    ax_gt.scatter(all_gt_points[row_idx][:, 0], all_gt_points[row_idx][:, 1], all_gt_points[row_idx][:, 2], 
+                                 c='blue', marker='o', s=25, alpha=0.8)
+                
+                style_3d_axes(ax_gt, f'Ground Truth Structure')
                 
                 # Plot 3 samples for this ground truth
                 for sample_idx in range(3):
                     plot_position = row_idx * 4 + sample_idx + 2  # [2,3,4] or [6,7,8]
                     ax = fig.add_subplot(2, 4, plot_position, projection='3d')
                     sample_points = all_sample_points[row_idx][sample_idx]
-                    ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2], 
-                               c='blue', marker='o', s=15, alpha=0.8)
-                    style_3d_axes(ax, f'GT {row_idx+1} - Sample {sample_idx+1}')
+                    
+                    # If atom types are available, use them for coloring
+                    if have_atom_types and all_sample_atom_types:
+                        # Use integer categories directly (no normalization)
+                        colors = all_sample_atom_types[row_idx][sample_idx].numpy()
+                        ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2],
+                                  c=colors, cmap='tab10', marker='o', s=25, alpha=0.8)
+                    else:
+                        ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2], 
+                                  c='blue', marker='o', s=25, alpha=0.8)
+                    
+                    style_3d_axes(ax, f'Sample {sample_idx+1}')
             
-            # plt.tight_layout()
+            plt.tight_layout()
             
             # Save the 3D plot
             filename_3d = os.path.join(samples_dir, f"epoch_{epoch:03d}_3d_plot.png")
@@ -982,6 +1134,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         'image_size_h': image_size[0],
         'image_size_w': image_size[1],
         'channels': channels,
+        'atom_mapping_path': atom_mapping_path,
+        'num_atom_categories': num_atom_categories,
         'device': str(device)
     }
     
