@@ -328,7 +328,7 @@ class VectorDiffusion(nn.Module):
         predicted_noise = self.denoiser(x_t, t_normalized.unsqueeze(1), latent_emb)
         
         # Calculate loss
-        return nn.MSELoss(reduction='mean')(epsilon, predicted_noise)
+        return -nn.MSELoss(reduction='mean')(epsilon, predicted_noise)
     
     def loss(self, x_0, cond):
         """
@@ -341,7 +341,7 @@ class VectorDiffusion(nn.Module):
         Returns:
             Loss value
         """
-        return self.elbo_simple(x_0, cond)
+        return -self.elbo_simple(x_0, cond)
 
     @torch.no_grad()
     def sample(self, shape, cond=None):
