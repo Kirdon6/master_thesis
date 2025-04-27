@@ -54,3 +54,5 @@ Thumbs.db
 CHILI/
 data/
 logs/
+training_samples/
+
