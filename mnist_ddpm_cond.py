@@ -6,6 +6,8 @@ from torchvision import datasets, transforms, utils
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 import math
+import pandas as pd
+import os
 
 
 class GaussianFourierProjection(nn.Module):
@@ -620,7 +622,6 @@ def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='sample
     save_dir: str
         Directory to save generated samples
     """
-    import os
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
@@ -691,6 +692,50 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
         return self.images[idx], self.conditioning[idx]
 
 
+def save_metrics_to_csv(metrics, filepath, model_params=None):
+    """
+    Save final training and validation metrics to a CSV file along with model parameters
+    
+    Parameters
+    ----------
+    metrics: dict
+        Dictionary containing metrics to save
+    filepath: str
+        Path to save the CSV file
+    model_params: dict
+        Dictionary containing model parameters to save
+    """
+    import pandas as pd
+    import os
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Create dictionary with final metrics
+    data = {}
+    
+    # Add only final values
+    if 'train_losses' in metrics and len(metrics['train_losses']) > 0:
+        data['final_train_loss'] = metrics['train_losses'][-1]
+    
+    if 'val_maes' in metrics and len(metrics['val_maes']) > 0:
+        data['final_val_mae'] = metrics['val_maes'][-1]
+    
+    if 'test_mae' in metrics:
+        data['test_mae'] = metrics['test_mae']
+    
+    # Add model parameters if provided
+    if model_params:
+        data.update(model_params)
+    
+    # Convert to DataFrame (single row)
+    df = pd.DataFrame([data])
+    
+    # Save to CSV
+    df.to_csv(filepath, index=False)
+    print(f"Final metrics saved to {filepath}")
+
+
 def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1000, learning_rate=1e-3, 
                                   epochs=100, batch_size=256, ema=True, cond_dim=6000, 
                                   cond_embed_dim=64, image_size=(10, 10), channels=3, model_type='unknown'):
@@ -723,6 +768,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         Size of the images (height, width)
     channels: int
         Number of color channels in the images
+    model_type: str
+        Type of model being trained (e.g., 'pos_abs' or 'pos_frac')
         
     Returns
     -------
@@ -912,13 +959,34 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     )
     
     # Save model
-    torch.save(model.state_dict(), os.path.join(samples_dir, "vector_conditioned_rgb_model.pt"))
-    print(f"Training complete. Model saved to '{os.path.join(samples_dir, 'vector_conditioned_rgb_model.pt')}'")
+    model_path = os.path.join(samples_dir, "vector_conditioned_rgb_model.pt")
+    torch.save(model.state_dict(), model_path)
+    print(f"Training complete. Model saved to '{model_path}'")
     
     # If test data is provided, run final evaluation
     if test_dataset is not None:
         test_mae = test(model, test_dataset, batch_size=batch_size, device=device)
         metrics['test_mae'] = test_mae
         print(f"Final test MAE: {test_mae:.4f}")
+    
+    # Collect model parameters
+    model_parameters = {
+        'model_type': model_type,
+        'T': T,
+        'learning_rate': learning_rate,
+        'epochs': epochs,
+        'batch_size': batch_size,
+        'ema': ema,
+        'cond_dim': cond_dim,
+        'cond_embed_dim': cond_embed_dim,
+        'image_size_h': image_size[0],
+        'image_size_w': image_size[1],
+        'channels': channels,
+        'device': str(device)
+    }
+    
+    # Save metrics to CSV
+    metrics_path = os.path.join(samples_dir, "final_metrics.csv")
+    save_metrics_to_csv(metrics, metrics_path, model_parameters)
     
     return model, metrics 
