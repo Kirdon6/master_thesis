@@ -22,6 +22,187 @@ class GaussianFourierProjection(nn.Module):
         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
 
 
+class DiscreteTransition:
+    """Handles transition matrices for discrete diffusion of atom types."""
+    def __init__(self, num_atom_types, T=1000, schedule='cosine'):
+        """
+        Initialize transition matrices for discrete diffusion.
+        
+        Parameters
+        ----------
+        num_atom_types: int
+            Number of atom type categories
+        T: int
+            Total number of diffusion steps
+        schedule: str
+            Type of noise schedule ('cosine' or 'linear')
+        """
+        self.num_atom_types = num_atom_types
+        self.T = T
+        self.schedule = schedule
+        
+        # Pre-compute and cache all transition matrices
+        self.transition_matrices = self._create_transition_matrices()
+        
+    def _cosine_schedule(self, t):
+        """Cosine schedule for noise level progression (from 0 to 1)."""
+        s = 0.008  # Same as in continuous diffusion for consistency
+        return torch.cos((t/self.T + s) / (1 + s) * math.pi / 2) ** 2 / \
+               torch.cos((torch.tensor(0.) + s) / (1 + s) * math.pi / 2) ** 2
+    
+    def _linear_schedule(self, t):
+        """Linear schedule from 0 to 1."""
+        return t / self.T
+    
+    def _create_transition_matrices(self):
+        """Create all transition matrices for the diffusion process."""
+        matrices = []
+        for t in range(self.T + 1):  # Include t=0 to T
+            t_tensor = torch.tensor(float(t))
+            
+            # Calculate noise level based on schedule
+            if self.schedule == 'cosine':
+                # For cosine schedule, we need to invert (1 - progress)
+                # since we want high noise at t=T and low at t=0
+                noise_level = 1 - self._cosine_schedule(t_tensor)
+            else:
+                noise_level = self._linear_schedule(t_tensor)
+            
+            # Identity matrix (no change)
+            identity = torch.eye(self.num_atom_types)
+            
+            # Uniform matrix (equal probability for all types)
+            uniform = torch.ones(self.num_atom_types, self.num_atom_types) / self.num_atom_types
+            
+            # Interpolate between identity and uniform
+            Q_t = (1 - noise_level) * identity + noise_level * uniform
+            
+            matrices.append(Q_t)
+            
+        return matrices
+    
+    def get_q_t(self, t):
+        """Get the transition matrix for a specific timestep."""
+        t = torch.clamp(t, min=0, max=self.T).int()
+        return self.transition_matrices[t]
+    
+    def q_sample(self, x_0, t, noise=None):
+        """
+        Sample from q(x_t | x_0) - forward diffusion process.
+        
+        Parameters
+        ----------
+        x_0: torch.tensor
+            Initial atom types as indices [batch_size, height, width] or [batch_size, height*width]
+        t: torch.tensor
+            Timestep, should be an integer tensor [batch_size, 1]
+        noise: torch.tensor, optional
+            Optional pre-generated random noise [batch_size, 1, height, width]
+            
+        Returns
+        -------
+        torch.tensor
+            Diffused atom types at timestep t
+        """
+        batch_size = x_0.shape[0]
+        t_flat = t.view(-1).to(torch.int64)
+        
+        # Original shape to restore later
+        original_shape = x_0.shape
+        
+        # Check if input is flattened or has spatial dimensions
+        if len(original_shape) == 3:
+            # Already in format [batch, height, width]
+            height, width = original_shape[1], original_shape[2]
+        else:
+            # Assume input is [batch, height*width]
+            # Try to infer height and width (assuming square grid)
+            flat_dim = original_shape[1]
+            height = width = int(math.sqrt(flat_dim))
+            
+        # Flatten x_0 to [batch_size, height*width]
+        x_0_flat = x_0.reshape(batch_size, -1)
+        num_atoms = x_0_flat.shape[1]
+        
+        # Prepare noise if provided (ensure correct shape)
+        if noise is not None:
+            # If noise is [batch, 1, height, width], reshape to [batch, height*width]
+            noise_flat = noise.reshape(batch_size, -1)
+        
+        # Initialize output tensor
+        x_t_flat = torch.zeros_like(x_0_flat)
+        
+        # For each item in the batch, apply the transition matrix
+        for i in range(batch_size):
+            # Get transition matrix Q_t for this timestep
+            Q_t = self.get_q_t(t_flat[i])
+            
+            # For each atom in this batch item, sample according to Q_t
+            for j in range(num_atoms):
+                atom_type = x_0_flat[i, j].item()
+                
+                # Get transition probabilities for this atom type
+                transition_probs = Q_t[atom_type]
+                
+                # Sample new atom type
+                if noise is None:
+                    # Sample from categorical distribution
+                    x_t_flat[i, j] = torch.multinomial(transition_probs, 1)
+                else:
+                    # Use provided noise - assuming this is [0,1] uniform noise
+                    # Get the noise value for this position
+                    noise_value = noise_flat[i, j].item()
+                    
+                    # Convert to categorical using inverse CDF
+                    cum_probs = torch.cumsum(transition_probs, dim=0)
+                    # Count how many cumulative probabilities are less than the noise value
+                    new_type = 0
+                    for k in range(len(cum_probs)):
+                        if noise_value > cum_probs[k]:
+                            new_type += 1
+                        else:
+                            break
+                    
+                    x_t_flat[i, j] = new_type
+        
+        # Restore original shape
+        if len(original_shape) == 3:
+            # Reshape back to [batch, height, width]
+            x_t = x_t_flat.reshape(batch_size, height, width)
+        else:
+            # Keep as [batch, height*width]
+            x_t = x_t_flat
+        
+        return x_t.to(torch.int64)
+    
+    def predict_start(self, model_output, x_t, t):
+        """
+        Predict x_0 given model output and x_t.
+        For the discrete case, model directly outputs categorical distribution over atom types.
+        
+        Parameters
+        ----------
+        model_output: torch.tensor
+            Model logits [batch_size, num_atom_types, ...]
+        x_t: torch.tensor
+            Current atom types at timestep t [batch_size, ...]
+        t: torch.tensor
+            Current timestep [batch_size, 1]
+            
+        Returns
+        -------
+        torch.tensor
+            Predicted original atom types x_0
+        """
+        # Convert model output logits to probabilities
+        probs = F.softmax(model_output, dim=1)
+        
+        # Get most likely atom type (argmax)
+        pred_x_0 = torch.argmax(probs, dim=1)
+        
+        return pred_x_0
+
+
 class Dense(nn.Module):
     """A fully connected layer that reshapes outputs to feature maps."""
     def __init__(self, input_dim, output_dim):
@@ -34,7 +215,7 @@ class Dense(nn.Module):
 class ScoreNet(nn.Module):
     """A time-dependent score-based model built upon U-Net architecture."""
 
-    def __init__(self, marginal_prob_std, channels=[32, 64, 128, 256], embed_dim=256, cond_dim=6000, cond_embed_dim=64):
+    def __init__(self, marginal_prob_std, channels=[32, 64, 128, 256], embed_dim=256, cond_dim=6000, cond_embed_dim=64, num_atom_types=0):
         """Initialize a time-dependent score-based network.
 
         Args:
@@ -44,11 +225,16 @@ class ScoreNet(nn.Module):
           embed_dim: The dimensionality of Gaussian random feature embeddings.
           cond_dim: The dimensionality of the conditioning vector.
           cond_embed_dim: The dimensionality to embed the conditioning vector.
+          num_atom_types: Number of atom type categories (0 if not using atom types)
         """
         super().__init__()
         # Gaussian random feature embedding layer for time
         self.embed = nn.Sequential(GaussianFourierProjection(embed_dim=embed_dim),
              nn.Linear(embed_dim, embed_dim))
+        
+        # Store whether we're using atom types
+        self.use_atom_types = num_atom_types > 0
+        self.num_atom_types = num_atom_types
         
         # Condition embedding layers to reduce dimensionality of the conditioning vector
         self.cond_embed = nn.Sequential(
@@ -60,7 +246,8 @@ class ScoreNet(nn.Module):
         )
         
         # Encoding layers where the resolution decreases
-        # Input has 3 channels (RGB) + conditional channels
+        # Input has 3 channels (xyz coordinates) + conditional channels
+        # If using atom types, they're provided separately
         self.conv1 = nn.Conv2d(3 + cond_embed_dim, channels[0], 3, stride=1, padding=1, bias=False)
         self.dense1 = Dense(embed_dim, channels[0])
         self.gnorm1 = nn.GroupNorm(4, num_channels=channels[0])
@@ -100,11 +287,36 @@ class ScoreNet(nn.Module):
         # Output has 3 channels for coordinates
         self.tconv1 = nn.ConvTranspose2d(channels[0] * 2, 3, 3, stride=1, padding=1)
         
+        # If using atom types, add a separate output head for atom type prediction
+        if self.use_atom_types:
+            self.atom_type_head = nn.Conv2d(channels[0] * 2, num_atom_types, 3, stride=1, padding=1)
+        
         # The swish activation function
         self.act = lambda x: x * torch.sigmoid(x)
         self.marginal_prob_std = marginal_prob_std
     
-    def forward(self, x, t, cond): 
+    def forward(self, x, t, cond, atom_types=None): 
+        """
+        Forward pass through the network.
+        
+        Parameters:
+        -----------
+        x: torch.tensor
+            Input tensor of shape [batch_size, 3, height, width] containing coordinates
+        t: torch.tensor
+            Time step of shape [batch_size]
+        cond: torch.tensor
+            Conditioning vector of shape [batch_size, cond_dim]
+        atom_types: torch.tensor, optional
+            Input tensor of shape [batch_size, 1, height, width] containing atom types
+            Only needed for visualization/debugging, not used in forward pass
+            
+        Returns
+        --------
+        dict containing:
+            'coords': tensor of shape [batch_size, 3, height, width] - score for continuous coordinates
+            'atom_types': tensor of shape [batch_size, num_atom_types, height, width] - logits for atom types (if applicable)
+        """
         # Obtain the Gaussian random feature embedding for t   
         embed = self.act(self.embed(t))  
         
@@ -112,6 +324,7 @@ class ScoreNet(nn.Module):
         cond_embedded = self.cond_embed(cond)
         cond_embedded = cond_embedded.view(x.shape[0], cond_embedded.shape[1], 1, 1).expand(x.shape[0], cond_embedded.shape[1], x.shape[2], x.shape[3])
         
+        # Concatenate input coordinates with conditioning
         net_input = torch.cat((x, cond_embedded), 1)  
         
         # Encoding path
@@ -166,11 +379,23 @@ class ScoreNet(nn.Module):
         if h.shape[2:] != h1.shape[2:]:
             h = F.interpolate(h, size=h1.shape[2:], mode='bilinear', align_corners=False)
             
-        h = self.tconv1(torch.cat([h, h1], dim=1))
-
-        # Normalize output
-        h = h / self.marginal_prob_std(t)[:, None, None, None]
-        return h
+        # High-level features for both coordinates and atom types
+        high_level_features = torch.cat([h, h1], dim=1)
+        
+        # Generate coordinate prediction
+        coords_output = self.tconv1(high_level_features)
+        # Normalize coordinate output
+        coords_output = coords_output / self.marginal_prob_std(t)[:, None, None, None]
+        
+        # Create result dictionary
+        result = {'coords': coords_output}
+        
+        # If using atom types, add atom type prediction
+        if self.use_atom_types:
+            atom_type_logits = self.atom_type_head(high_level_features)
+            result['atom_types'] = atom_type_logits
+            
+        return result
 
 
 class ExponentialMovingAverage(torch.optim.swa_utils.AveragedModel):
@@ -189,7 +414,7 @@ class ExponentialMovingAverage(torch.optim.swa_utils.AveragedModel):
 
 class DDPM(nn.Module):
 
-    def __init__(self, network, T=100, beta_1=1e-4, beta_T=2e-2, cond_dim=6000, image_size=(10, 10), channels=3):
+    def __init__(self, network, T=100, beta_1=1e-4, beta_T=2e-2, cond_dim=6000, image_size=(10, 10), channels=3, num_atom_types=0):
         """
         Initialize Denoising Diffusion Probabilistic Model
 
@@ -208,7 +433,9 @@ class DDPM(nn.Module):
         image_size: tuple
             Size of the image (height, width).
         channels: int
-            Number of color channels in the image.
+            Number of color channels in the image. Should be 3 for coordinates-only, 4 for coordinates+atom_types.
+        num_atom_types: int
+            Number of atom type categories. If 0, only continuous diffusion is used.
         """
         
         super(DDPM, self).__init__()
@@ -216,10 +443,13 @@ class DDPM(nn.Module):
         # Store image dimensions
         self.image_size = image_size
         self.channels = channels
+        self.has_atom_types = num_atom_types > 0
+        self.num_atom_types = num_atom_types
 
         # Pass input directly to network, no reshaping needed
         self._network = network
-        self.network = lambda x, t, cond: self._network(x, (t.squeeze()/T), cond)
+        # Wrapper to normalize time to [0,1] range
+        self.network = lambda x, t, cond, atom_types=None: self._network(x, (t.squeeze()/T), cond, atom_types)
 
         # Total number of time steps
         self.T = T
@@ -230,61 +460,100 @@ class DDPM(nn.Module):
         self.register_buffer("alpha", 1-self.beta)
         self.register_buffer("alpha_bar", self.alpha.cumprod(dim=0))
         
+        # If using atom types, create transition matrices for discrete diffusion
+        if self.has_atom_types:
+            self.discrete_transition = DiscreteTransition(num_atom_types, T=T, schedule='cosine')
 
-    def forward_diffusion(self, x0, t, epsilon):
+
+    def forward_diffusion(self, x0, t, epsilon=None, atom_types=None):
         '''
-        q(x_t | x_0)
-        Forward diffusion from an input datapoint x0 to an xt at timestep t, provided a N(0,1) noise sample epsilon. 
-        Note that we can do this operation in a single step
+        Forward diffusion process.
+        For continuous coordinates: q(x_t | x_0)
+        For discrete atom types (if present): q(a_t | a_0)
 
         Parameters
         ----------
         x0: torch.tensor
-            x value at t=0 (an input image) of shape [batch_size, channels, height, width]
+            Coordinates at t=0 (an input image) of shape [batch_size, 3, height, width]
         t: int
-            step index 
-        epsilon:
-            noise sample of same shape as x0
+            Step index
+        epsilon: torch.tensor, optional
+            Noise sample of same shape as x0. If None, random noise will be generated.
+        atom_types: torch.tensor, optional
+            Atom types at t=0 of shape [batch_size, 1, height, width]
 
         Returns
         -------
-        torch.tensor
-            image at timestep t, same shape as x0
+        dict containing:
+            'coords': Diffused coordinates at timestep t, same shape as x0
+            'atom_types': Diffused atom types at timestep t (if atom_types provided)
         ''' 
         
         # Squeeze the time dimension to make it [batch_size]
         t_flat = t.squeeze(-1)
         
-        # Now alpha_bar[t_flat] will have shape [batch_size]
+        # Generate random noise if not provided
+        if epsilon is None:
+            epsilon = torch.randn_like(x0)
+        
+        # Forward diffusion for continuous coordinates
         mean = torch.sqrt(self.alpha_bar[t_flat])[:, None, None, None] * x0
         std = torch.sqrt(1 - self.alpha_bar[t_flat])[:, None, None, None]
+        x_t = mean + std * epsilon
         
-        return mean + std * epsilon
+        result = {'coords': x_t}
+        
+        # If atom types are provided, also perform discrete diffusion
+        if atom_types is not None and self.has_atom_types:
+            # Sample q(a_t | a_0) - discrete diffusion for atom types
+            # Generate uniform noise for atom type sampling [batch_size, 1, height, width]
+            atom_noise = torch.rand_like(atom_types.float())
+            
+            # Remove channel dimension (we already know there's just one channel)
+            # shape becomes [batch_size, height, width]
+            atom_types_no_channel = atom_types.squeeze(1)
+            
+            # Perform discrete diffusion
+            a_t = self.discrete_transition.q_sample(atom_types_no_channel, t, atom_noise)
+            
+            # Add channel dimension back
+            a_t = a_t.unsqueeze(1)
+            result['atom_types'] = a_t
+            
+        return result
 
-    def reverse_diffusion(self, xt, t, epsilon, cond):
+    def reverse_diffusion(self, xt, t, epsilon=None, cond=None, atom_types_t=None):
         """
-        p(x_{t-1} | x_t)
-        Single step in the reverse direction, from x_t (at timestep t) to x_{t-1}, provided a N(0,1) noise sample epsilon.
+        Reverse diffusion step.
+        For continuous coordinates: p(x_{t-1} | x_t)
+        For discrete atom types (if present): p(a_{t-1} | a_t)
 
         Parameters
         ----------
         xt: torch.tensor
-            x value at step t of shape [batch_size, channels, height, width]
+            Coordinates at step t of shape [batch_size, 3, height, width]
         t: int
-            step index
-        epsilon:
-            noise sample of same shape as xt
+            Step index
+        epsilon: torch.tensor, optional
+            Noise sample of same shape as xt. If None, random noise will be generated.
         cond: torch.tensor
             Conditioning vector of shape [batch_size, cond_dim]
+        atom_types_t: torch.tensor, optional
+            Atom types at step t of shape [batch_size, 1, height, width]
 
         Returns
         -------
-        torch.tensor
-            image at timestep t-1, same shape as xt
+        dict containing:
+            'coords': Coordinates at timestep t-1, same shape as xt
+            'atom_types': Atom types at timestep t-1 (if atom_types_t provided)
         """
         
         # Squeeze the time dimension
         t_flat = t.squeeze(-1)
+        
+        # Generate random noise if not provided
+        if epsilon is None:
+            epsilon = torch.randn_like(xt)
         
         alpha_t = self.alpha[t_flat][:, None, None, None]
         beta_t = self.beta[t_flat][:, None, None, None]
@@ -296,23 +565,56 @@ class DDPM(nn.Module):
         else:
             alpha_bar_prev = torch.ones_like(alpha_bar_t)
         
-        # Predict the noise
-        predicted_noise = self.network(xt, t, cond)
+        # Predict noise and/or atom types
+        network_output = self.network(xt, t, cond, atom_types_t)
         
-        # Calculate mean for p(x_{t-1} | x_t)
+        # Extract coordinate noise prediction
+        predicted_noise = network_output['coords']
+        
+        # Calculate mean for p(x_{t-1} | x_t) - continuous coordinates
         mean = (1 / torch.sqrt(alpha_t)) * (xt - (beta_t / torch.sqrt(1 - alpha_bar_t)) * predicted_noise)
         
         # Calculate variance for p(x_{t-1} | x_t)
         var = beta_t * (1 - alpha_bar_prev) / (1 - alpha_bar_t)
         std = torch.sqrt(var)
         
-        return mean + std * epsilon
+        # Sample x_{t-1} for continuous coordinates
+        x_t_minus_1 = mean + std * epsilon
+        
+        result = {'coords': x_t_minus_1}
+        
+        # If atom types are provided and we're using them, also perform reverse discrete diffusion
+        if atom_types_t is not None and self.has_atom_types:
+            # Extract atom type logits prediction
+            atom_type_logits = network_output['atom_types']
+            
+            # For t > 1, sample from predicted distribution
+            # For t = 1, deterministically choose most likely atom type
+            if t_flat[0] > 1:
+                # Convert logits to probabilities
+                atom_probs = F.softmax(atom_type_logits, dim=1)
+                
+                # Sample new atom types
+                # We'll gather based on categorical distribution
+                atom_probs_flat = atom_probs.permute(0, 2, 3, 1).reshape(-1, self.num_atom_types)
+                atom_samples = torch.multinomial(atom_probs_flat, 1).reshape(atom_types_t.shape[0], 
+                                                                              atom_types_t.shape[2], 
+                                                                              atom_types_t.shape[3])
+                a_t_minus_1 = atom_samples.unsqueeze(1)
+            else:
+                # For the final step, just use argmax for the most likely atom type
+                a_t_minus_1 = torch.argmax(atom_type_logits, dim=1, keepdim=True)
+            
+            result['atom_types'] = a_t_minus_1
+            
+        return result
 
     
     @torch.no_grad()
     def sample(self, batch_size, cond=None):
         """
         Sample from diffusion model (Algorithm 2 in Ho et al, 2020)
+        Extended to support both continuous coordinates and discrete atom types.
 
         Parameters
         ----------
@@ -324,8 +626,12 @@ class DDPM(nn.Module):
 
         Returns
         -------
-        torch.tensor
-            sampled images of shape [batch_size, channels, height, width]            
+        If has_atom_types is True:
+            dict containing:
+                'coords': sampled coordinates of shape [batch_size, 3, height, width]
+                'atom_types': sampled atom types of shape [batch_size, 1, height, width]
+        Else:
+            torch.tensor: sampled coordinates of shape [batch_size, 3, height, width]            
         """
         # Check if conditioning vector has the right shape
         if cond is not None:
@@ -340,10 +646,25 @@ class DDPM(nn.Module):
             # If single conditioning vector provided, expand to batch size
             cond = cond.unsqueeze(0).expand(batch_size, -1)
         
-        # Sample xT: Gaussian noise of shape [batch_size, channels, height, width]
-        xT = torch.randn(batch_size, self.channels, self.image_size[0], self.image_size[1], device=self.beta.device)
+        # Sample xT: Gaussian noise of shape [batch_size, 3, height, width]
+        # Notice we're only initializing the 3 coordinate channels, not atom types
+        xT = torch.randn(batch_size, 3, self.image_size[0], self.image_size[1], device=self.beta.device)
 
+        # Initialize atom types if needed
+        if self.has_atom_types:
+            # Initialize atom types with uniform distribution 
+            atom_logits = torch.ones(batch_size, 1, self.image_size[0], self.image_size[1], 
+                                     device=self.beta.device)
+            # Sample initial atom types uniformly
+            atom_types = torch.randint(0, self.num_atom_types, 
+                                      (batch_size, 1, self.image_size[0], self.image_size[1]),
+                                      device=self.beta.device)
+        else:
+            atom_types = None
+
+        # Initialize with noise
         xt = xT
+
         for t in range(self.T, 0, -1):
             # Sample noise for current step (or zero for t=1)
             noise = torch.randn_like(xt) if t > 1 else 0
@@ -352,26 +673,45 @@ class DDPM(nn.Module):
             t_batch = torch.tensor(t).expand(batch_size, 1).to(self.beta.device)
             
             # Single step of reverse diffusion
-            xt = self.reverse_diffusion(xt, t_batch, noise, cond)
+            step_result = self.reverse_diffusion(xt, t_batch, noise, cond, atom_types)
+            
+            # Update xt for next iteration
+            xt = step_result['coords']
+            
+            # Update atom types if applicable
+            if self.has_atom_types:
+                atom_types = step_result['atom_types']
 
-        return xt
+        # Return results
+        if self.has_atom_types:
+            return {
+                'coords': xt,
+                'atom_types': atom_types
+            }
+        else:
+            return xt
 
     
-    def elbo_simple(self, x0, cond):
+    def elbo_simple(self, x0, cond, atom_types=None):
         """
         ELBO training objective (Algorithm 1 in Ho et al, 2020)
+        Extended to support both continuous coordinates and discrete atom types.
 
         Parameters
         ----------
         x0: torch.tensor
-            Input image of shape [batch_size, channels, height, width]
+            Input coordinates of shape [batch_size, 3, height, width]
         cond: torch.tensor
             Conditioning vector of shape [batch_size, cond_dim]
+        atom_types: torch.tensor, optional
+            Input atom types of shape [batch_size, 1, height, width]
 
         Returns
         -------
-        float
-            ELBO value            
+        dict containing:
+            'continuous_loss': Loss for continuous coordinates
+            'discrete_loss': Loss for discrete atom types (if applicable)
+            'total_loss': Combined loss
         """
 
         # Sample time step t with shape [batch_size, 1]
@@ -380,19 +720,71 @@ class DDPM(nn.Module):
         # Sample noise with same shape as x0
         epsilon = torch.randn_like(x0)
 
-        # Forward diffusion to produce image at step t
-        xt = self.forward_diffusion(x0, t, epsilon)
+        # Forward diffusion to produce image and atom types at step t
+        diffusion_result = self.forward_diffusion(x0, t, epsilon, atom_types)
         
-        # Predict noise and calculate loss
-        predicted_noise = self.network(xt, t, cond)
-        return -nn.MSELoss(reduction='mean')(epsilon, predicted_noise)
+        xt = diffusion_result['coords']
+        at = diffusion_result.get('atom_types', None)
+        
+        # Get model predictions
+        network_output = self.network(xt, t, cond, at)
+        
+        # Calculate loss for continuous coordinates
+        predicted_noise = network_output['coords']
+        continuous_loss = F.mse_loss(epsilon, predicted_noise)
+        
+        # Initialize with continuous loss
+        result = {
+            'continuous_loss': continuous_loss,
+            'total_loss': continuous_loss
+        }
+        
+        # If using atom types, add discrete loss
+        if self.has_atom_types and atom_types is not None:
+            # Get atom type predictions
+            atom_type_logits = network_output['atom_types']
+            
+            # Calculate cross-entropy loss for atom types
+            # First reshape to [batch_size * height * width, num_atom_types]
+            B, C, H, W = atom_type_logits.shape
+            atom_type_logits_flat = atom_type_logits.permute(0, 2, 3, 1).reshape(-1, C)
+            
+            # And reshape atom types to [batch_size * height * width]
+            atom_types_flat = at.view(-1)
+            
+            # Calculate cross-entropy loss
+            discrete_loss = F.cross_entropy(atom_type_logits_flat, atom_types_flat)
+            
+            # Add to result
+            result['discrete_loss'] = discrete_loss
+            
+            # Combine losses with weighting (equal weighting by default)
+            discrete_weight = 1.0
+            result['total_loss'] = continuous_loss + discrete_weight * discrete_loss
+        
+        return result
 
     
-    def loss(self, x0, cond):
+    def loss(self, x0, cond, atom_types=None):
         """
-        Loss function. Just the negative of the ELBO.
+        Combined loss function.
+        
+        Parameters
+        ----------
+        x0: torch.tensor
+            Input coordinates of shape [batch_size, 3, height, width]
+        cond: torch.tensor
+            Conditioning vector of shape [batch_size, cond_dim]
+        atom_types: torch.tensor, optional
+            Input atom types of shape [batch_size, 1, height, width]
+            
+        Returns
+        -------
+        torch.tensor
+            Combined loss value
         """
-        return -self.elbo_simple(x0, cond).mean()
+        loss_dict = self.elbo_simple(x0, cond, atom_types)
+        return loss_dict['total_loss']
 
 
 def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None, epochs=100, batch_size=256, device='cuda', ema=True, per_epoch_callback=None):
@@ -468,11 +860,22 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
 
         epoch_losses = []
         global_step_counter = 0
-        for i, (x, cond) in enumerate(dataloader):
-            x = x.to(device)
-            cond = cond.to(device)
-            optimizer.zero_grad()
-            loss = model.loss(x, cond)
+        for i, batch in enumerate(dataloader):
+            # Check if we're getting combined data (coords + atom types) or just coords
+            if len(batch[0]) == 2:
+                (x, atom_types), cond = batch
+                x = x.to(device)
+                atom_types = atom_types.to(device)
+                cond = cond.to(device)
+                optimizer.zero_grad()
+                loss = model.loss(x, cond, atom_types)
+            else:
+                x, cond = batch
+                x = x.to(device)
+                cond = cond.to(device)
+                optimizer.zero_grad()
+                loss = model.loss(x, cond)
+                
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -539,12 +942,31 @@ def validate(model, dataloader, device):
     all_truths = []
     
     with torch.no_grad():
-        for x, cond in dataloader:
-            x = x.to(device)
-            cond = cond.to(device)
-            
-            # Generate samples using the model's sampling functionality
-            samples = model.sample(x.size(0), cond)
+        for batch in dataloader:
+            # Check if we're getting combined data (coords + atom types) or just coords
+            if len(batch[0]) == 2:
+                (x, atom_types), cond = batch
+                x = x.to(device)
+                atom_types = atom_types.to(device)
+                cond = cond.to(device)
+                
+                # Generate samples using the model's sampling functionality
+                samples = model.sample(x.size(0), cond)
+                
+                # Extract just the coordinate part if we get a dict
+                if isinstance(samples, dict):
+                    samples = samples['coords']
+            else:
+                x, cond = batch
+                x = x.to(device)
+                cond = cond.to(device)
+                
+                # Generate samples
+                samples = model.sample(x.size(0), cond)
+                
+                # Extract just the coordinate part if we get a dict
+                if isinstance(samples, dict):
+                    samples = samples['coords']
             
             # Reshape to [batch_size, num_atoms, 3] for MAE calculation
             # Permute from [batch_size, channels, height, width] to [batch_size, height, width, channels]
@@ -730,7 +1152,7 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
         
         # Combine atom types if available
         if has_atom_types:
-            self.atom_types = torch.cat(self.atom_types, dim=0)
+            self.atom_types = torch.cat(self.atom_types, dim=0).long()  # Ensure long type for indices
         
         # Combine conditioning data
         self.conditioning = torch.cat(self.conditioning, dim=0)
@@ -748,7 +1170,23 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
         return len(self.images)
     
     def __getitem__(self, idx):
-        # Return positions and atom types as separate tensors
+        """
+        Get an item from the dataset
+        
+        Returns
+        -------
+        For models using atom types:
+            tuple: ((coordinates, atom_types), conditioning_vector)
+                coordinates: tensor of shape [3, height, width]
+                atom_types: tensor of shape [1, height, width]
+                conditioning_vector: tensor of shape [cond_dim]
+        For models without atom types:
+            tuple: (coordinates, conditioning_vector)
+                coordinates: tensor of shape [3, height, width]
+                conditioning_vector: tensor of shape [cond_dim]
+        """
+        # For models using atom types, return tuple of (coordinates, atom_types) as first element
+        # Otherwise return just coordinates
         if len(self.atom_types) > 0:
             return (self.images[idx], self.atom_types[idx]), self.conditioning[idx]
         else:
@@ -845,8 +1283,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Create output directory for sample images
     import os
     
-    # Determine number of channels based on whether atom mapping is provided
-    channels = 4 if atom_mapping_path else 3
+    # Determine number of channels and atom types count
+    channels = 3
+    num_atom_types = 0
     
     # Create a unique folder for this model run based on parameters
     import time
@@ -863,16 +1302,16 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     
     # Load atom type mapping if provided
     atom_mapping = None
-    num_atom_categories = 0
     if atom_mapping_path:
         try:
             import json
             with open(atom_mapping_path, 'r') as f:
                 atom_mapping = json.load(f)
-            num_atom_categories = atom_mapping['num_categories']
-            print(f"Loaded atom mapping with {num_atom_categories} categories for visualization")
+            num_atom_types = atom_mapping['num_categories']
+            print(f"Loaded atom mapping with {num_atom_types} categories for visualization")
         except Exception as e:
             print(f"Warning: Could not load atom mapping for visualization: {e}")
+            num_atom_types = 0
     
     # Create custom datasets that pair images with conditioning vectors
     train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
@@ -887,7 +1326,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     unet = ScoreNet(
         (lambda t: torch.ones(1).to(device)),
         cond_dim=cond_dim,
-        cond_embed_dim=cond_embed_dim
+        cond_embed_dim=cond_embed_dim,
+        num_atom_types=num_atom_types
     )
 
     # Construct model
@@ -896,7 +1336,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         T=T, 
         cond_dim=cond_dim, 
         image_size=image_size, 
-        channels=channels
+        channels=channels,
+        num_atom_types=num_atom_types
     ).to(device)
 
     # Construct optimizer
@@ -921,13 +1362,14 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Get reference data for visualization
     for batch in train_dataloader:
         # Check if this is the new format with atom types ((positions, atom_types), cond)
-        if isinstance(batch[0], tuple) and len(batch[0]) == 2:
+
+        if len(batch[0]) == 2:
             (positions, atom_types), conds = batch
             ground_truth_images = positions[:2].to(device)
             ground_truth_atom_types = atom_types[:2].to(device)
             ground_truth_conds = conds[:2].to(device)
         else:
-            # Traditional format (pos, cond)
+            # Traditional format (positions, cond)
             positions, conds = batch
             ground_truth_images = positions[:2].to(device)
             ground_truth_conds = conds[:2].to(device)
@@ -965,42 +1407,46 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                     gt_atom_type = ground_truth_atom_types[gt_idx:gt_idx+1]
                 
                 # Generate 3 samples for each ground truth image
-                samples = model.sample(3, cond).cpu()
+                samples = model.sample(3, cond)
+                
+                # Handle case where samples is a dictionary (has both coords and atom types)
+                sample_coords = samples['coords'] if isinstance(samples, dict) else samples
+                sample_atom_types = samples.get('atom_types', None) if isinstance(samples, dict) else None
                 
                 # Use raw data for visualization
                 gt_normalized_img = gt_image.cpu()
-                samples_normalized_img = samples.cpu()
+                samples_normalized_img = sample_coords.cpu()
 
                 # Combine ground truth as first image followed by 3 samples (1 row)
                 row = torch.cat([gt_normalized_img, samples_normalized_img], dim=0)
                 all_rows.append(row)
                 
                 # Extract ground truth points for 3D plotting
-                gt_points = gt_normalized_img[0, :3].permute(1, 2, 0)  # [height, width, channels]
+                gt_points = gt_normalized_img[0].permute(1, 2, 0)  # [height, width, channels]
                 gt_points = gt_points.reshape(-1, 3)  # [height*width, channels] = [100, 3]
                 all_gt_points.append(gt_points)
+                
+                # Store ground truth atom types if available
+                if gt_atom_type is not None:
+                    gt_atom = gt_atom_type[0].cpu().view(-1)
+                    all_gt_atom_types.append(gt_atom)
                 
                 # Extract sample points for 3D plotting
                 row_samples = []
                 row_atom_types = []
                 for i in range(3):
-                    sample_points = samples_normalized_img[i, :3].permute(1, 2, 0)
+                    sample_points = samples_normalized_img[i].permute(1, 2, 0)
                     sample_points = sample_points.reshape(-1, 3)
                     row_samples.append(sample_points)
                     
-                    # Extract atom types if available (4th channel)
-                    if channels == 4:
-                        sample_atom_type = samples[i, 3].view(-1)
-                        row_atom_types.append(sample_atom_type)
+                    # Extract atom types if available
+                    if sample_atom_types is not None:
+                        sample_atom = sample_atom_types[i].cpu().view(-1)
+                        row_atom_types.append(sample_atom)
                 
                 all_sample_points.append(row_samples)
-                
-                # Store ground truth atom types if available
-                if have_atom_types:
-                    gt_atom = gt_atom_type[0].cpu().view(-1)
-                    all_gt_atom_types.append(gt_atom)
-                    if row_atom_types:
-                        all_sample_atom_types.append(row_atom_types)
+                if row_atom_types:
+                    all_sample_atom_types.append(row_atom_types)
             
             # 1. Create the 2D image grid visualization (using only coordinate channels)
             combined = torch.cat(all_rows, dim=0)
@@ -1045,7 +1491,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 ax_gt = fig.add_subplot(2, 4, plot_position, projection='3d')
                 
                 # If atom types are available, use them for coloring
-                if have_atom_types:
+                if all_gt_atom_types:
                     # Use integer categories directly for coloring (no normalization)
                     colors = all_gt_atom_types[row_idx].numpy()
                     scatter = ax_gt.scatter(all_gt_points[row_idx][:, 0], 
@@ -1054,15 +1500,15 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                                           c=colors, cmap='tab10', marker='o', s=25, alpha=0.8)
                     
                     # Add color bar for the first row
-                    if row_idx == 0 and num_atom_categories > 0:
-                        cbar = plt.colorbar(scatter, ax=ax_gt, ticks=range(num_atom_categories))
+                    if row_idx == 0 and num_atom_types > 0:
+                        cbar = plt.colorbar(scatter, ax=ax_gt, ticks=range(num_atom_types))
                         if atom_mapping:
                             # Try to add atom labels if available
                             idx_to_atom_num = atom_mapping.get('idx_to_atom_num', {})
                             if idx_to_atom_num:
                                 # Only show a subset of labels if there are many categories
-                                if num_atom_categories <= 10:
-                                    labels = [f"Z={idx_to_atom_num[str(i)]}" for i in range(num_atom_categories)]
+                                if num_atom_types <= 10:
+                                    labels = [f"Z={idx_to_atom_num[str(i)]}" for i in range(num_atom_types)]
                                     cbar.set_ticklabels(labels)
                 else:
                     ax_gt.scatter(all_gt_points[row_idx][:, 0], all_gt_points[row_idx][:, 1], all_gt_points[row_idx][:, 2], 
@@ -1077,7 +1523,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                     sample_points = all_sample_points[row_idx][sample_idx]
                     
                     # If atom types are available, use them for coloring
-                    if have_atom_types and all_sample_atom_types:
+                    if all_sample_atom_types:
                         # Use integer categories directly (no normalization)
                         colors = all_sample_atom_types[row_idx][sample_idx].numpy()
                         ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2],
@@ -1134,8 +1580,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         'image_size_h': image_size[0],
         'image_size_w': image_size[1],
         'channels': channels,
+        'num_atom_types': num_atom_types,
         'atom_mapping_path': atom_mapping_path,
-        'num_atom_categories': num_atom_categories,
         'device': str(device)
     }
     
