@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:1                    # Request 1 GPU
+#SBATCH --gres=gpu:4                    # Request 1 GPU
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
 #SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
 
