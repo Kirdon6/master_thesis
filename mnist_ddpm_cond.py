@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import math
 import pandas as pd
 import os
+from scipy.spatial.distance import directed_hausdorff
 
 
 class GaussianFourierProjection(nn.Module):
@@ -321,6 +322,7 @@ class ScoreNet(nn.Module):
         embed = self.act(self.embed(t))  
         
         # Embedding of condition vector
+        print(cond.shape)
         cond_embedded = self.cond_embed(cond)
         cond_embedded = cond_embedded.view(x.shape[0], cond_embedded.shape[1], 1, 1).expand(x.shape[0], cond_embedded.shape[1], x.shape[2], x.shape[3])
         
@@ -421,7 +423,7 @@ class DDPM(nn.Module):
         Parameters
         ----------
         network: nn.Module
-            The inner neural network used by the diffusion process. Typically a Unet.
+            The inner neural network used by the diffusion process. 
         beta_1: float
             beta_t value at t=1 
         beta_T: [float]
@@ -647,14 +649,10 @@ class DDPM(nn.Module):
             cond = cond.unsqueeze(0).expand(batch_size, -1)
         
         # Sample xT: Gaussian noise of shape [batch_size, 3, height, width]
-        # Notice we're only initializing the 3 coordinate channels, not atom types
         xT = torch.randn(batch_size, 3, self.image_size[0], self.image_size[1], device=self.beta.device)
 
         # Initialize atom types if needed
         if self.has_atom_types:
-            # Initialize atom types with uniform distribution 
-            atom_logits = torch.ones(batch_size, 1, self.image_size[0], self.image_size[1], 
-                                     device=self.beta.device)
             # Sample initial atom types uniformly
             atom_types = torch.randint(0, self.num_atom_types, 
                                       (batch_size, 1, self.image_size[0], self.image_size[1]),
@@ -730,8 +728,8 @@ class DDPM(nn.Module):
         network_output = self.network(xt, t, cond, at)
         
         # Calculate loss for continuous coordinates
-        predicted_noise = network_output['coords']
-        continuous_loss = F.mse_loss(epsilon, predicted_noise)
+        predicted_coords = network_output['coords']
+        continuous_loss = F.mse_loss(x0, predicted_coords)
         
         # Initialize with continuous loss
         result = {
@@ -750,7 +748,7 @@ class DDPM(nn.Module):
             atom_type_logits_flat = atom_type_logits.permute(0, 2, 3, 1).reshape(-1, C)
             
             # And reshape atom types to [batch_size * height * width]
-            atom_types_flat = at.view(-1)
+            atom_types_flat = atom_types.view(-1)
             
             # Calculate cross-entropy loss
             discrete_loss = F.cross_entropy(atom_type_logits_flat, atom_types_flat)
@@ -853,6 +851,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     # Lists to track metrics
     train_losses = []
     val_maes = []
+    val_hausdorffs = []
     
     for epoch in range(epochs):
         # Switch to train mode
@@ -898,14 +897,16 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         # Validation step
         if val_dataloader is not None:
             active_model = ema_model.module if ema else model
-            val_mae = validate(active_model, val_dataloader, device)
-            val_maes.append(val_mae)
+            val_metrics = validate(active_model, val_dataloader, device)
+            val_maes.append(val_metrics['mae'])
+            val_hausdorffs.append(val_metrics['hausdorff'])
             
-            # Update progress bar with validation metric
-            progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_mae:12.4f}", 
+            # Update progress bar with validation metrics
+            progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_metrics['mae']:12.4f}", 
+                                     val_hausdorff=f"{val_metrics['hausdorff']:12.4f}",
                                      epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
             
-            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_mae:.4f}")
+            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}")
         
         if per_epoch_callback:
             per_epoch_callback(ema_model.module if ema else model, epoch)
@@ -913,7 +914,8 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     # Return training metrics
     return {
         'train_losses': train_losses,
-        'val_maes': val_maes
+        'val_maes': val_maes,
+        'val_hausdorffs': val_hausdorffs
     }
 
 
@@ -932,8 +934,10 @@ def validate(model, dataloader, device):
         
     Returns
     -------
-    float
-        Mean absolute error on validation data
+    dict
+        Dictionary containing validation metrics:
+        - 'mae': Mean absolute error on validation data
+        - 'hausdorff': Mean Hausdorff distance on validation data
     """
     from benchmark_tasks_utils import position_MAE
     
@@ -987,9 +991,34 @@ def validate(model, dataloader, device):
         
         # Calculate MAE
         mae = position_MAE(all_preds, all_truths)
-        return mae.item()
+        
+        # Calculate Hausdorff distance for each pair of structures
+        hausdorff_distances = []
+        for i in range(all_preds.shape[0]):
+            # Convert to numpy for scipy
+            pred_points = all_preds[i].cpu().numpy()
+            true_points = all_truths[i].cpu().numpy()
+            
+            # Calculate directed Hausdorff distance in both directions
+            forward_hausdorff = directed_hausdorff(pred_points, true_points)[0]
+            backward_hausdorff = directed_hausdorff(true_points, pred_points)[0]
+            
+            # Take the max of the two directed distances
+            hausdorff = max(forward_hausdorff, backward_hausdorff)
+            hausdorff_distances.append(hausdorff)
+        
+        # Calculate mean Hausdorff distance
+        mean_hausdorff = sum(hausdorff_distances) / len(hausdorff_distances)
+        
+        return {
+            'mae': mae.item(),
+            'hausdorff': mean_hausdorff
+        }
     
-    return float('inf')  # Return infinity if no validation data
+    return {
+        'mae': float('inf'),
+        'hausdorff': float('inf')
+    }
 
 
 def test(model, test_data, batch_size=256, device='cuda'):
@@ -1009,8 +1038,8 @@ def test(model, test_data, batch_size=256, device='cuda'):
         
     Returns
     -------
-    float
-        Mean absolute error on test data
+    dict
+        Dictionary containing test metrics (MAE and Hausdorff distance)
     """
     # Create dataloader if dataset is provided
     if not isinstance(test_data, torch.utils.data.DataLoader):
@@ -1023,10 +1052,10 @@ def test(model, test_data, batch_size=256, device='cuda'):
         test_dataloader = test_data
         
     # Call validation function for testing
-    test_mae = validate(model, test_dataloader, device)
-    print(f"Test MAE: {test_mae:.4f}")
+    test_metrics = validate(model, test_dataloader, device)
+    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}")
     
-    return test_mae
+    return test_metrics
 
 
 def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='samples'):
@@ -1081,7 +1110,7 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
     Dataset wrapper that pairs images with vector conditional information.
     Also includes atom types as an additional channel.
     """
-    def __init__(self, data, model_type='unknown', atom_mapping_path=None):
+    def __init__(self, data, model_type='unknown', atom_mapping_path=None, cond_type='xPDF'):
         """
         Parameters
         ----------
@@ -1091,6 +1120,8 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
             Type of model ('pos_abs' or 'pos_frac')
         atom_mapping_path: str, optional
             Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
+        cond_type: str
+            Type of conditioning data ('xPDF' or 'XRD')
         """
         self.images = []
         self.atom_types = []
@@ -1143,9 +1174,19 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
                 atom_indices_reshaped = atom_indices.view(-1, 1, 10, 10)
                 self.atom_types.append(atom_indices_reshaped)
             
-            # Get conditioning vector (xPDF)
-            xpdf = batch.y['xPDF']
-            self.conditioning.append(xpdf[:,1,:])
+            # Get conditioning vector (either xPDF or XRD)
+            if cond_type == 'xPDF':
+                cond_data = batch.y['xPDF'][:,1,:]
+            elif cond_type == 'XRD':
+                cond_data = batch.y['xrd'][:,1,:]
+            else:
+                raise ValueError("Neither xPDF nor XRD found in batch data")
+            
+            # Normalize conditioning data
+            cond_min = torch.min(cond_data, dim=-1, keepdim=True)[0]
+            cond_max = torch.max(cond_data, dim=-1, keepdim=True)[0]
+            normalized_cond = (cond_data - cond_min) / (cond_max - cond_min)
+            self.conditioning.append(normalized_cond)
         
         # Combine position data
         self.images = torch.cat(self.images, dim=0)
@@ -1222,8 +1263,14 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     if 'val_maes' in metrics and len(metrics['val_maes']) > 0:
         data['final_val_mae'] = metrics['val_maes'][-1]
     
+    if 'val_hausdorffs' in metrics and len(metrics['val_hausdorffs']) > 0:
+        data['final_val_hausdorff'] = metrics['val_hausdorffs'][-1]
+    
     if 'test_mae' in metrics:
         data['test_mae'] = metrics['test_mae']
+    
+    if 'test_hausdorff' in metrics:
+        data['test_hausdorff'] = metrics['test_hausdorff']
     
     # Add model parameters if provided
     if model_params:
@@ -1240,7 +1287,7 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
 def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1000, learning_rate=1e-3, 
                                   epochs=100, batch_size=256, ema=True, cond_dim=6000, 
                                   cond_embed_dim=64, image_size=(10, 10), model_type='unknown',
-                                  atom_mapping_path=None):
+                                  atom_mapping_path=None, sample_dir=None, cond_type='xPDF'):
     """
     Train a vector-conditioned DDPM model on RGB images
     
@@ -1286,16 +1333,15 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Determine number of channels and atom types count
     channels = 3
     num_atom_types = 0
-    
     # Create a unique folder for this model run based on parameters
     import time
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     atom_suffix = "_with_atoms" if atom_mapping_path else ""
     model_params = f"{model_type}_T{T}_lr{learning_rate}_epochs{epochs}_batch{batch_size}_cond{cond_embed_dim}{atom_suffix}_{timestamp}"
-    samples_dir = os.path.join("training_samples", model_params)
+    samples_dir = os.path.join(sample_dir, "training_samples", model_params)
     
-    if not os.path.exists("training_samples"):
-        os.makedirs("training_samples")
+    if not os.path.exists(os.path.join(sample_dir, "training_samples")):
+        os.makedirs(os.path.join(sample_dir, "training_samples"))
     
     if not os.path.exists(samples_dir):
         os.makedirs(samples_dir)
@@ -1314,9 +1360,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             num_atom_types = 0
     
     # Create custom datasets that pair images with conditioning vectors
-    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
-    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if val_data is not None and not isinstance(val_data, torch.utils.data.Dataset) else val_data
-    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path) if test_data is not None and not isinstance(test_data, torch.utils.data.Dataset) else test_data
+    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
+    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type ) if val_data is not None and not isinstance(val_data, torch.utils.data.Dataset) else val_data
+    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type) if test_data is not None and not isinstance(test_data, torch.utils.data.Dataset) else test_data
 
     # Select device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -1378,15 +1424,16 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         break  # Only need the first batch
 
     def reporter(model, epoch):
-        """Callback function used for plotting images during training after each epoch"""
+        """Callback function used for plotting 3D structures during training after each epoch"""
+        # Only generate plots every 100 epochs
+        if epoch % 10 != 0:
+            return
+            
         # Switch to eval mode
         model.eval()
 
         with torch.no_grad():
-            # Create a list to store all rows (each row is gt + 3 samples)
-            all_rows = []
-            
-            # Store all 3D sample points for later plotting
+            # Store all 3D sample points for plotting
             all_gt_points = []
             all_sample_points = []
             all_gt_atom_types = []
@@ -1416,10 +1463,6 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 # Use raw data for visualization
                 gt_normalized_img = gt_image.cpu()
                 samples_normalized_img = sample_coords.cpu()
-
-                # Combine ground truth as first image followed by 3 samples (1 row)
-                row = torch.cat([gt_normalized_img, samples_normalized_img], dim=0)
-                all_rows.append(row)
                 
                 # Extract ground truth points for 3D plotting
                 gt_points = gt_normalized_img[0].permute(1, 2, 0)  # [height, width, channels]
@@ -1448,20 +1491,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 if row_atom_types:
                     all_sample_atom_types.append(row_atom_types)
             
-            # 1. Create the 2D image grid visualization (using only coordinate channels)
-            combined = torch.cat(all_rows, dim=0)
-            grid = utils.make_grid(combined, nrow=4)
-            plt.figure(figsize=(12, 3 * len(ground_truth_images)))
-            plt.gca().set_axis_off()
-            plt.imshow(transforms.functional.to_pil_image(grid))
-            plt.title(f"Epoch {epoch} - Ground Truth (first column) + Generated Samples")
-            
-            # Save the 2D image grid
-            filename = os.path.join(samples_dir, f"epoch_{epoch:03d}_all_images.png")
-            plt.savefig(filename)
-            plt.close()
-            
-            # 2. Create the 3D plot with 2 rows, each with GT + 3 samples
+            # Create the 3D plot with 2 rows, each with GT + 3 samples
             fig = plt.figure(figsize=(20, 10), facecolor='white')
             
             # Custom function to style each 3D plot
@@ -1484,6 +1514,73 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 ax.set_yticklabels([])
                 ax.set_zticklabels([])
             
+            # Create a single ScalarMappable for the colorbar if using atom types
+            if all_gt_atom_types and num_atom_types > 0:
+                # We need more colors than tab10 provides (only 10 colors)
+                # Create a custom colormap with enough distinct colors for all atom types
+                if num_atom_types <= 10:
+                    # For 10 or fewer categories, tab10 is excellent
+                    cmap = plt.cm.get_cmap('tab10', num_atom_types)
+                elif num_atom_types <= 20:
+                    # For up to 20, we can use tab20
+                    cmap = plt.cm.get_cmap('tab20', num_atom_types)
+                else:
+                    # For more categories, create a custom colormap with enough distinct colors
+                    # Use HSV color space to create maximally distinct colors
+                    import matplotlib.colors as mcolors
+                    
+                    # Create evenly spaced hues
+                    hues = np.linspace(0, 1, num_atom_types, endpoint=False)
+                    # Create colors with varying hue, full saturation and value
+                    hsv_colors = [(h, 0.8, 0.9) for h in hues]
+                    # Convert HSV to RGB
+                    rgb_colors = [mcolors.hsv_to_rgb(hsv) for hsv in hsv_colors]
+                    # Create a ListedColormap
+                    cmap = mcolors.ListedColormap(rgb_colors)
+                
+                # Use BoundaryNorm to get discrete color levels
+                bounds = np.arange(0, num_atom_types+1)
+                norm = plt.matplotlib.colors.BoundaryNorm(bounds, cmap.N)
+                sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+                sm.set_array([])
+            
+            # Create a special axis for the colorbar on the left
+            if all_gt_atom_types and num_atom_types > 0:
+                # Add a special axis for the colorbar on the left
+                cbar_ax = fig.add_axes([0.05, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+                
+                # Add the colorbar
+                cbar = fig.colorbar(sm, cax=cbar_ax)
+                cbar.set_label('Atom Type', size=12)
+                
+                if atom_mapping:
+                    # Try to add atom labels if available
+                    idx_to_atom_num = atom_mapping.get('idx_to_atom_num', {})
+                    # Create labels for each category
+                    labels = []
+                    for i in range(num_atom_types):
+                        atom_num = idx_to_atom_num.get(str(i), "?")
+                        labels.append(f"Z={atom_num}")
+                    
+                    # Set tick positions and labels for a discrete colorbar
+                    # For a discrete colorbar with N colors, we want ticks in the middle of each color
+                    ticks = np.arange(num_atom_types) + 0.5
+                    
+                    # If there are too many atom types, show only a subset of labels to avoid overcrowding
+                    if num_atom_types > 20:
+                        # Determine how many labels to show (approximately one every 5-10 positions)
+                        stride = max(1, num_atom_types // 15)
+                        # Create subset of ticks and labels
+                        subset_indices = range(0, num_atom_types, stride)
+                        subset_ticks = [ticks[i] for i in subset_indices]
+                        subset_labels = [labels[i] for i in subset_indices]
+                        cbar.set_ticks(subset_ticks)
+                        cbar.set_ticklabels(subset_labels)
+                    else:
+                        # For smaller number of atom types, show all labels
+                        cbar.set_ticks(ticks)
+                        cbar.set_ticklabels(labels)
+            
             # Plot both rows (one for each ground truth)
             for row_idx in range(len(all_gt_points)):
                 # Plot ground truth as first plot in each row
@@ -1494,25 +1591,13 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 if all_gt_atom_types:
                     # Use integer categories directly for coloring (no normalization)
                     colors = all_gt_atom_types[row_idx].numpy()
-                    scatter = ax_gt.scatter(all_gt_points[row_idx][:, 0], 
-                                          all_gt_points[row_idx][:, 1], 
-                                          all_gt_points[row_idx][:, 2], 
-                                          c=colors, cmap='tab10', marker='o', s=25, alpha=0.8)
-                    
-                    # Add color bar for the first row
-                    if row_idx == 0 and num_atom_types > 0:
-                        cbar = plt.colorbar(scatter, ax=ax_gt, ticks=range(num_atom_types))
-                        if atom_mapping:
-                            # Try to add atom labels if available
-                            idx_to_atom_num = atom_mapping.get('idx_to_atom_num', {})
-                            if idx_to_atom_num:
-                                # Only show a subset of labels if there are many categories
-                                if num_atom_types <= 10:
-                                    labels = [f"Z={idx_to_atom_num[str(i)]}" for i in range(num_atom_types)]
-                                    cbar.set_ticklabels(labels)
+                    ax_gt.scatter(all_gt_points[row_idx][:, 0], 
+                                all_gt_points[row_idx][:, 1], 
+                                all_gt_points[row_idx][:, 2], 
+                                c=colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
                 else:
                     ax_gt.scatter(all_gt_points[row_idx][:, 0], all_gt_points[row_idx][:, 1], all_gt_points[row_idx][:, 2], 
-                                 c='blue', marker='o', s=25, alpha=0.8)
+                                c='blue', marker='o', s=25, alpha=0.8)
                 
                 style_3d_axes(ax_gt, f'Ground Truth Structure')
                 
@@ -1527,14 +1612,15 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         # Use integer categories directly (no normalization)
                         colors = all_sample_atom_types[row_idx][sample_idx].numpy()
                         ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2],
-                                  c=colors, cmap='tab10', marker='o', s=25, alpha=0.8)
+                                  c=colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
                     else:
                         ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2], 
                                   c='blue', marker='o', s=25, alpha=0.8)
                     
                     style_3d_axes(ax, f'Sample {sample_idx+1}')
             
-            plt.tight_layout()
+            # Adjust layout for better spacing - give more space on the left for the colorbar
+            plt.subplots_adjust(wspace=0.3, hspace=0.3, left=0.15)
             
             # Save the 3D plot
             filename_3d = os.path.join(samples_dir, f"epoch_{epoch:03d}_3d_plot.png")
@@ -1563,9 +1649,10 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     
     # If test data is provided, run final evaluation
     if test_dataset is not None:
-        test_mae = test(model, test_dataset, batch_size=batch_size, device=device)
-        metrics['test_mae'] = test_mae
-        print(f"Final test MAE: {test_mae:.4f}")
+        test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
+        metrics['test_mae'] = test_metrics['mae']
+        metrics['test_hausdorff'] = test_metrics['hausdorff']
+        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}")
     
     # Collect model parameters
     model_parameters = {

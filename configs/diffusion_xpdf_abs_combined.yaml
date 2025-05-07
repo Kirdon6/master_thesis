@@ -1,0 +1,34 @@
+# Configuration file for VectorDiffusion model on xPDF task with optimized parameters
+model: "Diffusion"
+task: "AbsPositionRegressionXPDF"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "diffusion_results"
+generate_samples: true
+
+# Model parameters
+Model_config:
+  model_type: "pos_abs"  # Absolute positions
+  T: 150                 # Balanced number of diffusion steps
+  cond_dim: 6000         # Dimensionality of xPDF data
+  cond_embed_dim: 128    # Larger embedding dimension
+  image_size: [10, 10]   # Image size (height, width)
+  cond_type: "xPDF"      # Conditioning type
+
+# Training parameters
+Train_config:
+  batch_size: 48         # Medium batch size for stability
+  learning_rate: 0.00008 # Moderate learning rate
+  epochs: 150            # More epochs
+  ema: true              # Use Exponential Moving Average
+  ema_decay: 0.995       # Specific EMA decay rate
+  seed: 42
+  num_workers: 0
+  reporter_save_frequency: 10  # Generate images every 10 epochs 

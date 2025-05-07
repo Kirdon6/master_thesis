@@ -1,0 +1,33 @@
+# Configuration file for MLP baseline model on xPDF task with lower learning rate
+model: "MLP"
+task: "FracPositionRegressionXRD"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "mlp_results"
+
+# Model configuration
+Model_config:
+  in_channels: 6000      # Dimensionality of xPDF data
+  hidden_dim: 512        # Hidden layer dimension
+  num_layers: 3          # Number of hidden layers
+  dropout: 0.1           # Dropout probability
+
+# Training parameters
+Train_config:
+  batch_size: 32
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  epochs: 200
+  max_patience: 20       # Early stopping patience
+  seed: 42
+  num_workers: 0
+  lr_scheduler: true
+  lr_step_size: 30
+  lr_gamma: 0.5 

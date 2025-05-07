@@ -1,0 +1,33 @@
+# Configuration file for VectorDiffusion model on XRD task with fractional positions and lower learning rate
+model: "Diffusion"
+task: "FracPositionRegressionXRD"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "diffusion_results"
+generate_samples: true
+
+# Model parameters
+Model_config:
+  model_type: "pos_frac"  # Fractional positions
+  T: 100                 # Number of diffusion steps
+  cond_dim: 6000         # Dimensionality of XRD data
+  cond_embed_dim: 64     # Embedding dimension for conditioning
+  image_size: [10, 10]   # Image size (height, width)
+  cond_type: "xrd"       # Conditioning type
+
+# Training parameters
+Train_config:
+  batch_size: 64
+  learning_rate: 0.00005
+  epochs: 100
+  ema: true              # Use Exponential Moving Average
+  seed: 42
+  num_workers: 0
+  reporter_save_frequency: 10  # Generate images every 10 epochs 
