@@ -322,7 +322,6 @@ class ScoreNet(nn.Module):
         embed = self.act(self.embed(t))  
         
         # Embedding of condition vector
-        print(cond.shape)
         cond_embedded = self.cond_embed(cond)
         cond_embedded = cond_embedded.view(x.shape[0], cond_embedded.shape[1], 1, 1).expand(x.shape[0], cond_embedded.shape[1], x.shape[2], x.shape[3])
         
