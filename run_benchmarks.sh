@@ -8,7 +8,7 @@
 #SBATCH --mem=32G                       # Memory limit
 #SBATCH --gres=gpu:4                    # Request 1 GPU
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
-#SBATCH --array=0                    # Array job with 4 tasks (for different configs)
+#SBATCH --array=0-3%1                   # Array job with 4 tasks (for different configs)
 
 source ~/master_thesis/nano_diff/bin/activate
 
