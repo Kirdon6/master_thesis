@@ -1176,7 +1176,7 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
             # Get conditioning vector (either xPDF or XRD)
             if cond_type == 'xPDF':
                 cond_data = batch.y['xPDF'][:,1,:]
-            elif cond_type == 'XRD':
+            elif cond_type == 'xrd':
                 cond_data = batch.y['xrd'][:,1,:]
             else:
                 raise ValueError("Neither xPDF nor XRD found in batch data")
