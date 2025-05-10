@@ -17,11 +17,14 @@ mkdir -p slurm_logs
 source ~/master_thesis/nano_diff/bin/activate
 
 # Print GPU information for debugging
-echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+echo "CUDA_VISIBLE_DEVICES before: $CUDA_VISIBLE_DEVICES"
 echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
 
-# Make sure PyTorch sees the GPUs allocated by Slurm
-export CUDA_VISIBLE_DEVICES=$SLURM_JOB_GPUS
+# Important fix: Use 0 for CUDA_VISIBLE_DEVICES regardless of the GPU ID assigned by Slurm
+# This tells PyTorch to use the first (and only) visible GPU
+export CUDA_VISIBLE_DEVICES=0
+
+echo "CUDA_VISIBLE_DEVICES after: $CUDA_VISIBLE_DEVICES"
 
 # Print GPU information using nvidia-smi
 nvidia-smi
