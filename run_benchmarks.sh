@@ -6,9 +6,9 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:1                    # Request 1 GPU per task
+#SBATCH --gres=gpu:4                    # Request 1 GPU per task
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
-#SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
+#SBATCH --array=0                  # Array job with 4 tasks (for different configs)
 
 source ~/master_thesis/nano_diff/bin/activate
 
@@ -41,9 +41,9 @@ nvidia-smi
 # Define configuration files for different tasks
 CONFIG_FILES=(
     "configs/diffusion_xpdf_abs_base.yaml"  # Task 0: Diffusion model with xPDF
-    "configs/diffusion_xrd_abs_base.yaml"   # Task 1: Diffusion model with XRD
-    "configs/mlp_xpdf_abs_base.yaml"        # Task 2: MLP model with xPDF
-    "configs/mlp_xrd_abs_base.yaml"         # Task 3: MLP model with XRD
+    # "configs/diffusion_xrd_abs_base.yaml"   # Task 1: Diffusion model with XRD
+    # "configs/mlp_xpdf_abs_base.yaml"        # Task 2: MLP model with xPDF
+    # "configs/mlp_xrd_abs_base.yaml"         # Task 3: MLP model with XRD
 )
 
 # Select the config file based on array task ID
