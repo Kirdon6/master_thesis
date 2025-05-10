@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:4                    # Request 4 GPUs
+#SBATCH --gres=gpu:1                    # Request 1 GPU per task
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
 #SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
 
@@ -25,9 +25,14 @@ echo "# CPUs: $SLURM_CPUS_PER_TASK"
 echo "CUDA_VISIBLE_DEVICES before: $CUDA_VISIBLE_DEVICES"
 echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
 
-# Important fix: Set CUDA_VISIBLE_DEVICES to use indices 0-3 regardless of Slurm's assigned IDs
-# This tells PyTorch to use the GPUs starting from index 0
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+# Force use of device index 0 (each job gets exactly 1 GPU from Slurm)
+export CUDA_VISIBLE_DEVICES=0
+
+# Add safety settings to help with GPU memory issues
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+
+# Enable better CUDA error reporting
+export CUDA_LAUNCH_BLOCKING=1
 
 echo "CUDA_VISIBLE_DEVICES after: $CUDA_VISIBLE_DEVICES"
 echo "Available GPU(s):"
@@ -55,8 +60,8 @@ fi
 
 echo "Running experiment with model type: $MODEL_TYPE"
 
-# Run the experiment script
-python run_benchmarks.py --config_path "$CONFIG_FILE"
+# Run the experiment script with options to handle GPU errors
+python run_benchmarks.py --config_path "$CONFIG_FILE" --memory_efficient True --cudnn_benchmark False
 
 deactivate
 
