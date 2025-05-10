@@ -724,8 +724,8 @@ def run_experiment(config_path, resume_from=None):
                 if os.path.exists(atom_mapping_path):
                     model_params["atom_mapping_path"] = atom_mapping_path
                     logger.info(f"Using atom mapping from {atom_mapping_path}")
-                else:
-                    logger.warning(f"Atom mapping file {atom_mapping_path} not found. Proceeding without atom types.")
+            else:
+                logger.warning(f"Atom mapping file {atom_mapping_path} not found. Proceeding without atom types.")
             
             # Add this inside the diffusion training section, before calling train_vector_conditioned_ddpm
             reporter_freq = config['Train_config'].get('reporter_save_frequency', 10)
