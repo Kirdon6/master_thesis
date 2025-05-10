@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:4                    # Request 1 GPU
+#SBATCH --gres=gpu:4                    # Request 4 GPUs
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
 #SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
 
@@ -20,6 +20,16 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
 echo "Node: $SLURM_JOB_NODELIST"
 echo "# CPUs: $SLURM_CPUS_PER_TASK"
+
+# Print GPU environment variables before fixing
+echo "CUDA_VISIBLE_DEVICES before: $CUDA_VISIBLE_DEVICES"
+echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
+
+# Important fix: Set CUDA_VISIBLE_DEVICES to use indices 0-3 regardless of Slurm's assigned IDs
+# This tells PyTorch to use the GPUs starting from index 0
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+echo "CUDA_VISIBLE_DEVICES after: $CUDA_VISIBLE_DEVICES"
 echo "Available GPU(s):"
 nvidia-smi
 
@@ -35,10 +45,6 @@ CONFIG_FILES=(
 CONFIG_FILE=${CONFIG_FILES[$SLURM_ARRAY_TASK_ID]}
 echo "Using config file: $CONFIG_FILE"
 
-# Activate conda environment if needed (uncomment and modify as necessary)
-# source /path/to/conda/etc/profile.d/conda.sh
-# conda activate your_environment
-
 # Extract model type from config file name
 MODEL_TYPE="Unknown"
 if [[ $CONFIG_FILE == *"diffusion"* ]]; then
@@ -48,13 +54,6 @@ elif [[ $CONFIG_FILE == *"mlp"* ]]; then
 fi
 
 echo "Running experiment with model type: $MODEL_TYPE"
-
-if nvidia-smi &>/dev/null; then
-    echo "GPUs detected, using CUDA version:"
-    nvidia-smi | grep "CUDA Version"
-else
-    echo "No GPUs detected, using CPU version"
-fi
 
 # Run the experiment script
 python run_benchmarks.py --config_path "$CONFIG_FILE"
