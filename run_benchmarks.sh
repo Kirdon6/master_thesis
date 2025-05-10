@@ -23,6 +23,12 @@ echo "# CPUs: $SLURM_CPUS_PER_TASK"
 echo "Available GPU(s):"
 nvidia-smi
 
+# Skip the GPU with errors
+export CUDA_VISIBLE_DEVICES=0,2,3
+
+# Show which GPUs are visible
+echo "Using GPUs: $CUDA_VISIBLE_DEVICES"
+
 # Define configuration files for different tasks
 CONFIG_FILES=(
     "configs/diffusion_xpdf_abs_base.yaml"  # Task 0: Diffusion model with xPDF
