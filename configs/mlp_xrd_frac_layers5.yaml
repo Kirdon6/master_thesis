@@ -14,7 +14,7 @@ output_dir: "mlp_results"
 
 # Model configuration
 Model_config:
-  in_channels: 6000      # Dimensionality of xPDF data
+  in_channels: 580      # Dimensionality of xPDF data
   hidden_dim: 512        # Hidden layer dimension
   num_layers: 5          # Number of hidden layers
   dropout: 0.1           # Dropout probability
