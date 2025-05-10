@@ -70,54 +70,31 @@ def setup_logging(log_dir, job_id=None, task_id=None):
 
 def setup_gpu_environment():
     """Configure GPU environment based on SLURM assignment."""
-    # Print debug information
-    print("DEBUG: PyTorch version:", torch.__version__)
-    print("DEBUG: CUDA available initial check:", torch.cuda.is_available())
+    # Check if CUDA is available
+    if not torch.cuda.is_available():
+        logging.warning("CUDA not available, using CPU")
+        return "cpu"
     
-    # Get environment variables
+    # If SLURM assigns a specific GPU, use that
     slurm_gpu = os.environ.get('SLURM_JOB_GPUS')
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES')
     
-    print(f"DEBUG: SLURM_JOB_GPUS: {slurm_gpu}")
-    print(f"DEBUG: CUDA_VISIBLE_DEVICES: {cuda_visible_devices}")
-    
-    # Try to force reinitialize CUDA (sometimes helps)
-    try:
-        torch.cuda.init()
-        print("DEBUG: Forced CUDA reinitialization")
-    except:
-        print("DEBUG: Could not force CUDA reinitialization")
-    
-    # Check if nvidia-smi is available as a strong indicator of GPU presence
-    try:
-        import subprocess
-        result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode == 0:
-            print("DEBUG: nvidia-smi confirms GPUs are present")
-            # If nvidia-smi works but torch.cuda.is_available() fails, force GPU mode
-            if not torch.cuda.is_available():
-                print("DEBUG: nvidia-smi works but PyTorch doesn't see CUDA - forcing CUDA mode")
-                # We'll try to use GPU 0 explicitly
-                return "cuda:0"
-    except:
-        pass
-    
-    # Standard check with more debugging
-    if torch.cuda.is_available():
-        print("DEBUG: CUDA is available according to PyTorch")
-        devices = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
-        print(f"DEBUG: Found {torch.cuda.device_count()} devices: {devices}")
-        return "cuda"
+    if slurm_gpu:
+        logging.info(f"SLURM assigned GPU(s): {slurm_gpu}")
+        # SLURM already sets CUDA_VISIBLE_DEVICES, but we can ensure it:
+        if not cuda_visible_devices:
+            os.environ['CUDA_VISIBLE_DEVICES'] = slurm_gpu
+    elif cuda_visible_devices:
+        logging.info(f"Using GPU(s) from CUDA_VISIBLE_DEVICES: {cuda_visible_devices}")
     else:
-        print("DEBUG: CUDA not available according to PyTorch final check")
-        # If we have CUDA_VISIBLE_DEVICES set but PyTorch doesn't see CUDA, 
-        # there might be a compatibility issue - try forcing it anyway
-        if cuda_visible_devices or slurm_gpu:
-            print("DEBUG: Attempting to force CUDA mode despite PyTorch check")
-            return "cuda:0"
-        
-        logging.warning("CUDA not available, using CPU")
-        return "cpu"
+        # No specific GPU assignment, use all available
+        logging.info(f"No specific GPU assignment, using all {torch.cuda.device_count()} available GPUs")
+    
+    # Log GPU info
+    for i in range(torch.cuda.device_count()):
+        logging.info(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+    
+    return "cuda"
 
 def train_mlp_model(config, train_loader, val_loader, test_loader, device, output_dir):
     """

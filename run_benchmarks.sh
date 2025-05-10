@@ -8,7 +8,7 @@
 #SBATCH --mem=32G                       # Memory limit
 #SBATCH --gres=gpu:4                    # Request 1 GPU
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
-#SBATCH --array=0-3%1                   # Array job with 4 tasks (for different configs)
+#SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
 
 source ~/master_thesis/nano_diff/bin/activate
 
@@ -22,12 +22,6 @@ echo "Node: $SLURM_JOB_NODELIST"
 echo "# CPUs: $SLURM_CPUS_PER_TASK"
 echo "Available GPU(s):"
 nvidia-smi
-
-# # Skip the GPU with errors
-# export CUDA_VISIBLE_DEVICES=0,2,3
-
-# # Show which GPUs are visible
-# echo "Using GPUs: $CUDA_VISIBLE_DEVICES"
 
 # Define configuration files for different tasks
 CONFIG_FILES=(
