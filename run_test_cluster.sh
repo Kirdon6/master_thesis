@@ -6,11 +6,25 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:4                    # Request 1 GPU
+#SBATCH --gres=gpu:1                    # Request 1 GPU
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
 #SBATCH --array=0                     # Array job with 4 tasks (for different configs)
 
+# Create logs directory if it doesn't exist
+mkdir -p slurm_logs
+
+# Activate the virtual environment
 source ~/master_thesis/nano_diff/bin/activate
+
+# Print GPU information for debugging
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
+echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
+
+# Make sure PyTorch sees the GPUs allocated by Slurm
+export CUDA_VISIBLE_DEVICES=$SLURM_JOB_GPUS
+
+# Print GPU information using nvidia-smi
+nvidia-smi
 
 # Run the experiment script
 python test_torch_cluster.py
