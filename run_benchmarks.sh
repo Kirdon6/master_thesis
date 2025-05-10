@@ -10,6 +10,8 @@
 #SBATCH --time=48:00:00                 # Time limit (48 hours)
 #SBATCH --array=0-3                     # Array job with 4 tasks (for different configs)
 
+source ~/master_thesis/nano_diff/bin/activate
+
 # Create logs directory if it doesn't exist
 mkdir -p slurm_logs
 
@@ -47,8 +49,17 @@ fi
 
 echo "Running experiment with model type: $MODEL_TYPE"
 
+if nvidia-smi &>/dev/null; then
+    echo "GPUs detected, using CUDA version:"
+    nvidia-smi | grep "CUDA Version"
+else
+    echo "No GPUs detected, using CPU version"
+fi
+
 # Run the experiment script
 python run_benchmarks.py --config_path "$CONFIG_FILE"
+
+deactivate
 
 # Signal completion
 echo "Job completed at $(date)" 
