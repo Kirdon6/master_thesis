@@ -60,8 +60,8 @@ fi
 
 echo "Running experiment with model type: $MODEL_TYPE"
 
-# Run the experiment script with options to handle GPU errors
-python run_benchmarks.py --config_path "$CONFIG_FILE" --memory_efficient True --cudnn_benchmark False
+# Run the experiment script 
+python run_benchmarks.py --config_path "$CONFIG_FILE" 
 
 deactivate
 
