@@ -31,4 +31,3 @@ Train_config:
   ema: true              # Use Exponential Moving Average
   seed: 42
   num_workers: 0
-  reporter_save_frequency: 10  # Generate images every 10 epochs 

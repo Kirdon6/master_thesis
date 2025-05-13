@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 import math
 import pandas as pd
 import os
-from scipy.spatial.distance import directed_hausdorff
 
+from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
+from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types
 
 class GaussianFourierProjection(nn.Module):
     """Gaussian random features for encoding time steps."""  
@@ -216,7 +217,7 @@ class Dense(nn.Module):
 class ScoreNet(nn.Module):
     """A time-dependent score-based model built upon U-Net architecture."""
 
-    def __init__(self, marginal_prob_std, channels=[32, 64, 128, 256], embed_dim=256, cond_dim=6000, cond_embed_dim=64, num_atom_types=0):
+    def __init__(self, marginal_prob_std, channels=[64, 128, 256, 512], embed_dim=256, cond_dim=6000, cond_embed_dim=64, num_atom_types=0):
         """Initialize a time-dependent score-based network.
 
         Args:
@@ -781,7 +782,7 @@ class DDPM(nn.Module):
             Combined loss value
         """
         loss_dict = self.elbo_simple(x0, cond, atom_types)
-        return loss_dict['total_loss']
+        return loss_dict
 
 
 def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None, epochs=100, batch_size=256, device='cuda', ema=True, per_epoch_callback=None):
@@ -851,13 +852,16 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     train_losses = []
     val_maes = []
     val_hausdorffs = []
-    
+    val_atom_type_accuracies = []
+    val_optimized_maes = []
+    val_optimized_typed_maes = []
+    val_match_accuracies = []
     for epoch in range(epochs):
         # Switch to train mode
         model.train()
 
         epoch_losses = []
-        global_step_counter = 0
+        
         for i, batch in enumerate(dataloader):
             # Check if we're getting combined data (coords + atom types) or just coords
             if len(batch[0]) == 2:
@@ -874,14 +878,25 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                 optimizer.zero_grad()
                 loss = model.loss(x, cond)
                 
-            loss.backward()
+            loss['total_loss'].backward()
             optimizer.step()
             scheduler.step()
             
-            epoch_losses.append(loss.item())
+            epoch_losses.append(loss['total_loss'].item())
 
             # Update progress bar
-            progress_bar.set_postfix(loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
+            # Extract and display different loss components if available
+            
+            cont_loss = loss['continuous_loss']
+            disc_loss = loss['discrete_loss']
+            total_loss = loss['total_loss']
+            progress_bar.set_postfix(
+                total_loss=f"⠀{total_loss:12.4f}", 
+                cont_loss=f"{cont_loss:12.4f}",
+                disc_loss=f"{disc_loss:12.4f}",
+                epoch=f"{epoch+1}/{epochs}", 
+                lr=f"{scheduler.get_last_lr()[0]:.2E}"
+            )
             progress_bar.update()
 
             if ema:
@@ -899,13 +914,18 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             val_metrics = validate(active_model, val_dataloader, device)
             val_maes.append(val_metrics['mae'])
             val_hausdorffs.append(val_metrics['hausdorff'])
-            
+            val_atom_type_accuracies.append(val_metrics['atom_type_accuracy'])
+            val_optimized_maes.append(val_metrics['optimized_mae'])
+            val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
+            val_match_accuracies.append(val_metrics['match_accuracy'])
             # Update progress bar with validation metrics
-            progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_metrics['mae']:12.4f}", 
+            progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_metrics['mae']:12.4f}",
+                                     val_optimized_mae=f"{val_metrics['optimized_mae']:12.4f}",
                                      val_hausdorff=f"{val_metrics['hausdorff']:12.4f}",
+                                     atom_acc=f"{val_metrics['atom_type_accuracy']:.2f}%",
                                      epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
             
-            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}")
+            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Optimized MAE: {val_metrics['optimized_mae']:.4f}, Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}, Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%, Val Match Acc: {val_metrics['match_accuracy']:.2f}%")
         
         if per_epoch_callback:
             per_epoch_callback(ema_model.module if ema else model, epoch)
@@ -914,7 +934,11 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     return {
         'train_losses': train_losses,
         'val_maes': val_maes,
-        'val_hausdorffs': val_hausdorffs
+        'val_optimized_maes': val_optimized_maes,
+        'val_hausdorffs': val_hausdorffs,
+        'val_atom_type_accuracies': val_atom_type_accuracies,
+        'val_optimized_typed_maes': val_optimized_typed_maes,
+        'val_match_accuracies': val_match_accuracies
     }
 
 
@@ -937,12 +961,16 @@ def validate(model, dataloader, device):
         Dictionary containing validation metrics:
         - 'mae': Mean absolute error on validation data
         - 'hausdorff': Mean Hausdorff distance on validation data
+        - 'atom_type_accuracy': Atom type prediction accuracy (if applicable)
     """
-    from benchmark_tasks_utils import position_MAE
     
     model.eval()
     all_preds = []
     all_truths = []
+    all_atom_type_preds = []
+    all_atom_type_truths = []
+    
+
     
     with torch.no_grad():
         for batch in dataloader:
@@ -956,20 +984,16 @@ def validate(model, dataloader, device):
                 # Generate samples using the model's sampling functionality
                 samples = model.sample(x.size(0), cond)
                 
-                # Extract just the coordinate part if we get a dict
+                # Extract coordinate and atom type parts
                 if isinstance(samples, dict):
-                    samples = samples['coords']
-            else:
-                x, cond = batch
-                x = x.to(device)
-                cond = cond.to(device)
-                
-                # Generate samples
-                samples = model.sample(x.size(0), cond)
-                
-                # Extract just the coordinate part if we get a dict
-                if isinstance(samples, dict):
-                    samples = samples['coords']
+                    sample_coords = samples['coords']
+                    sample_atom_types = samples.get('atom_types', None)
+                    
+                    # Store atom type predictions and truths for accuracy calculation
+                    if sample_atom_types is not None:
+                        all_atom_type_preds.append(sample_atom_types)
+                        all_atom_type_truths.append(atom_types)
+
             
             # Reshape to [batch_size, num_atoms, 3] for MAE calculation
             # Permute from [batch_size, channels, height, width] to [batch_size, height, width, channels]
@@ -977,47 +1001,36 @@ def validate(model, dataloader, device):
             batch_size = x.size(0)
             
             # Permute dimensions before reshaping to correctly align channels
-            pred_xyz = samples.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
+            pred_xyz = sample_coords.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
             true_xyz = x.permute(0, 2, 3, 1).reshape(batch_size, -1, 3)
             
             all_preds.append(pred_xyz)
             all_truths.append(true_xyz)
     
     # Concatenate all predictions and ground truths
-    if all_preds:
-        all_preds = torch.cat(all_preds, dim=0)
-        all_truths = torch.cat(all_truths, dim=0)
-        
-        # Calculate MAE
-        mae = position_MAE(all_preds, all_truths)
-        
-        # Calculate Hausdorff distance for each pair of structures
-        hausdorff_distances = []
-        for i in range(all_preds.shape[0]):
-            # Convert to numpy for scipy
-            pred_points = all_preds[i].cpu().numpy()
-            true_points = all_truths[i].cpu().numpy()
-            
-            # Calculate directed Hausdorff distance in both directions
-            forward_hausdorff = directed_hausdorff(pred_points, true_points)[0]
-            backward_hausdorff = directed_hausdorff(true_points, pred_points)[0]
-            
-            # Take the max of the two directed distances
-            hausdorff = max(forward_hausdorff, backward_hausdorff)
-            hausdorff_distances.append(hausdorff)
-        
-        # Calculate mean Hausdorff distance
-        mean_hausdorff = sum(hausdorff_distances) / len(hausdorff_distances)
-        
-        return {
-            'mae': mae.item(),
-            'hausdorff': mean_hausdorff
-        }
+    all_preds = torch.cat(all_preds, dim=0)
+    all_truths = torch.cat(all_truths, dim=0)
+    all_atom_type_preds = torch.cat(all_atom_type_preds, dim=0)
+    all_atom_type_truths = torch.cat(all_atom_type_truths, dim=0)
+    
+    # Calculate MAE
+    mae = position_MAE(all_preds, all_truths)
+    optimized_mae = quick_batch_metric(all_preds, all_truths)
+    hausdorff = hausdorff_distance(all_preds, all_truths)
+    accuracy = atom_type_accuracy(all_atom_type_preds, all_atom_type_truths, model_type='diffusion')
+    typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths)
+    optimized_typed_mae = typed_metrics['mean_distance']
+    match_accuracy = typed_metrics['type_accuracy']
     
     return {
-        'mae': float('inf'),
-        'hausdorff': float('inf')
+        'mae': mae.item(),
+        'optimized_mae': optimized_mae,
+        'hausdorff': hausdorff,
+        'atom_type_accuracy': accuracy,
+        'optimized_typed_mae': optimized_typed_mae,
+        'match_accuracy': match_accuracy
     }
+    
 
 
 def test(model, test_data, batch_size=256, device='cuda'):
@@ -1038,7 +1051,7 @@ def test(model, test_data, batch_size=256, device='cuda'):
     Returns
     -------
     dict
-        Dictionary containing test metrics (MAE and Hausdorff distance)
+        Dictionary containing test metrics (MAE, Hausdorff distance, and atom type accuracy)
     """
     # Create dataloader if dataset is provided
     if not isinstance(test_data, torch.utils.data.DataLoader):
@@ -1052,7 +1065,7 @@ def test(model, test_data, batch_size=256, device='cuda'):
         
     # Call validation function for testing
     test_metrics = validate(model, test_dataloader, device)
-    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}")
+    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%, Test Match Accuracy: {test_metrics['match_accuracy']:.2f}%")
     
     return test_metrics
 
@@ -1084,9 +1097,9 @@ def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='sample
             # Generate samples directly in 3D format [batch_size, channels, height, width]
             samples = model.sample(num_samples, cond.to(model.beta.device)).cpu()
             
-            # Map pixel values back from [-1,1] to [0,1]
-            samples = (samples+1)/2 
-            samples = samples.clamp(0.0, 1.0)
+            # # Map pixel values back from [-1,1] to [0,1]
+            # samples = (samples+1)/2 
+            # samples = samples.clamp(0.0, 1.0)
 
             # Create a grid of images
             grid = utils.make_grid(samples, nrow=int(math.sqrt(num_samples)))
@@ -1265,11 +1278,19 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     if 'val_hausdorffs' in metrics and len(metrics['val_hausdorffs']) > 0:
         data['final_val_hausdorff'] = metrics['val_hausdorffs'][-1]
     
+    # Add atom type accuracy metrics
+    if 'val_atom_type_accuracies' in metrics and len(metrics['val_atom_type_accuracies']) > 0:
+        data['final_val_atom_type_accuracy'] = metrics['val_atom_type_accuracies'][-1]
+    
     if 'test_mae' in metrics:
         data['test_mae'] = metrics['test_mae']
     
     if 'test_hausdorff' in metrics:
         data['test_hausdorff'] = metrics['test_hausdorff']
+    
+    # Add test atom type accuracy if available
+    if 'test_atom_type_accuracy' in metrics:
+        data['test_atom_type_accuracy'] = metrics['test_atom_type_accuracy']
     
     # Add model parameters if provided
     if model_params:
@@ -1326,7 +1347,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     metrics: dict
         Dictionary containing training metrics
     """
-    # Create output directory for sample images
+
     import os
     
     # Determine number of channels and atom types count
@@ -1359,13 +1380,14 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             num_atom_types = 0
     
     # Create custom datasets that pair images with conditioning vectors
-    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
-    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type ) if val_data is not None and not isinstance(val_data, torch.utils.data.Dataset) else val_data
-    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type) if test_data is not None and not isinstance(test_data, torch.utils.data.Dataset) else test_data
+    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type)
+    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type )
+    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type)
 
     # Select device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+
 
     # Construct Unet
     unet = ScoreNet(
@@ -1632,8 +1654,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         optimizer, 
         scheduler, 
         train_dataset, 
-        val_data=val_dataset,
-        test_data=test_dataset,
+        val_dataset,
+        test_dataset,
         epochs=epochs, 
         batch_size=batch_size,
         device=device, 
@@ -1651,7 +1673,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
         metrics['test_mae'] = test_metrics['mae']
         metrics['test_hausdorff'] = test_metrics['hausdorff']
-        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}")
+        metrics['test_atom_type_accuracy'] = test_metrics['atom_type_accuracy']
+        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
     
     # Collect model parameters
     model_parameters = {
@@ -1665,7 +1688,6 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         'cond_embed_dim': cond_embed_dim,
         'image_size_h': image_size[0],
         'image_size_w': image_size[1],
-        'channels': channels,
         'num_atom_types': num_atom_types,
         'atom_mapping_path': atom_mapping_path,
         'device': str(device)

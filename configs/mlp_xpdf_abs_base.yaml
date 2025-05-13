@@ -19,6 +19,8 @@ Model_config:
   num_layers: 3          # Number of hidden layers
   dropout: 0.1           # Dropout probability
   atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_abs"  # Absolute positions
+  cond_type: "xPDF"      # Conditioning type
 
 # Training parameters
 Train_config:
