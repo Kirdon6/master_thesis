@@ -335,7 +335,7 @@ class BatchedNanomaterialEvaluator:
         """
         batch_size = pred_xyz.shape[0]
         batch_results = []
-        
+        #TODO if pred_types shape [batch, atom_type, 10,10] correctly handle this
         # Handle case where pred_types might be logits
         if pred_types.dim() > 2:  # If pred_types has shape [batch_size, n_atoms, n_classes]
             pred_types = torch.argmax(pred_types, dim=-1)  # Convert to class indices
