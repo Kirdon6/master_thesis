@@ -322,7 +322,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                 total_loss = pos_loss + atom_type_weight * atom_type_loss
                 
                 # Log separate losses
-                logging.info(f"Position Loss: {pos_loss.item():.4f}, Atom Type Loss: {atom_type_loss.item():.4f}")
+                # print(f"Position Loss: {pos_loss.item():.4f}, Atom Type Loss: {atom_type_loss.item():.4f}")
             
             # Backward pass
             total_loss.backward()
@@ -411,7 +411,7 @@ def validate(model, val_dataloader, device):
     
     val_mae = position_MAE(all_preds, all_truths)
     val_optimized_mae = quick_batch_metric(all_preds, all_truths)
-    typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths)
+    typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths, input_format='atoms')
     optimized_typed_mae = typed_metrics['mean_distance']
     match_accuracy = typed_metrics['type_accuracy']
 

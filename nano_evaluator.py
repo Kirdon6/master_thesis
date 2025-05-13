@@ -4,6 +4,52 @@ from scipy.optimize import linear_sum_assignment
 from typing import Dict, List, Tuple, Optional
 from benchmark_tasks_utils import position_MAE
 
+def convert_image_to_atom_list(self, coord_image: torch.Tensor, type_image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Convert image format (where each pixel is an atom) to atom list format
+        
+        Args:
+            coord_image: (batch, 3, height, width) - coordinates at each pixel
+            type_image: (batch, num_types, height, width) - type logits at each pixel
+            
+        Returns:
+            coords: (batch, height*width, 3) - atom coordinates
+            types: (batch, height*width, num_types) - atom type logits
+        """
+        batch_size, _, height, width = coord_image.shape
+        num_atoms = height * width
+        
+        # Reshape coordinates: (batch, 3, h, w) -> (batch, h*w, 3)
+        coords = coord_image.permute(0, 2, 3, 1).reshape(batch_size, num_atoms, 3)
+        
+        # Reshape types: (batch, num_types, h, w) -> (batch, h*w, num_types)
+        types = type_image.permute(0, 2, 3, 1).reshape(batch_size, num_atoms, -1)
+        
+        return coords, types
+    
+def evaluate_diffusion_format(self, pred_coord_images: torch.Tensor, true_coord_images: torch.Tensor,
+                                pred_type_images: torch.Tensor, true_type_images: torch.Tensor,
+                                type_mismatch_penalty: float = 20.0) -> Dict:
+        """
+        Evaluate diffusion model outputs in image format (each pixel is an atom)
+        
+        Args:
+            pred_coord_images: (batch, 3, height, width) predicted coordinates
+            true_coord_images: (batch, 3, height, width) true coordinates
+            pred_type_images: (batch, num_types, height, width) predicted type logits
+            true_type_images: (batch, num_types, height, width) true type logits
+            type_mismatch_penalty: penalty for type mismatches
+        """
+        # Convert to atom list format
+        pred_coords, pred_types = self.convert_image_to_atom_list(pred_coord_images, pred_type_images)
+        true_coords, true_types = self.convert_image_to_atom_list(true_coord_images, true_type_images)
+        
+        # Run standard evaluation
+        return self.batched_comprehensive_evaluation(
+            pred_coords, true_coords, pred_types, true_types, type_mismatch_penalty
+        )
+
+
 class BatchedNanomaterialEvaluator:
     def __init__(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -335,7 +381,7 @@ class BatchedNanomaterialEvaluator:
         """
         batch_size = pred_xyz.shape[0]
         batch_results = []
-        #TODO if pred_types shape [batch, atom_type, 10,10] correctly handle this
+        
         # Handle case where pred_types might be logits
         if pred_types.dim() > 2:  # If pred_types has shape [batch_size, n_atoms, n_classes]
             pred_types = torch.argmax(pred_types, dim=-1)  # Convert to class indices
@@ -505,37 +551,89 @@ class BatchedNanomaterialEvaluator:
         
         return results
 
-# Convenience functions for common use cases
-def evaluate_diffusion_batch(pred_batch: torch.Tensor, true_batch: torch.Tensor,
-                           pred_types: Optional[torch.Tensor] = None,
-                           true_types: Optional[torch.Tensor] = None) -> Dict:
-    """
-    Quick evaluation for a batch of generated structures
-    
-    Args:
-        pred_batch: (batch_size, n_atoms, 3)
-        true_batch: (batch_size, n_atoms, 3)
-        pred_types: (batch_size, n_atoms) optional predicted atom types
-        true_types: (batch_size, n_atoms) optional true atom types
-    """
-    evaluator = BatchedNanomaterialEvaluator()
-    return evaluator.batched_comprehensive_evaluation(pred_batch, true_batch, pred_types, true_types)
-
-def quick_batch_metric(pred_batch: torch.Tensor, true_batch: torch.Tensor) -> float:
+def quick_batch_metric(pred_batch: torch.Tensor, true_batch: torch.Tensor,
+                     input_format: str = 'auto') -> float:
     """
     Get single metric for batch evaluation (mean aligned distance)
     """
     evaluator = BatchedNanomaterialEvaluator()
-    results = evaluator.batched_optimal_assignment_distance(pred_batch, true_batch)
+    
+    # Handle different formats
+    if input_format == 'auto':
+        input_format = 'images' if pred_batch.dim() == 4 else 'atoms'
+    
+    if input_format == 'images':
+        # Convert to atom format
+        pred_coords, _ = evaluator.convert_image_to_atom_list(pred_batch, pred_batch)  # Use coords as dummy types
+        true_coords, _ = evaluator.convert_image_to_atom_list(true_batch, true_batch)
+        results = evaluator.batched_optimal_assignment_distance(pred_coords, true_coords)
+    else:
+        results = evaluator.batched_optimal_assignment_distance(pred_batch, true_batch)
+    
     return results['batch_mean']
-
-def quick_batch_metric_with_types(pred_batch: torch.Tensor, true_batch: torch.Tensor,
-                                pred_types: torch.Tensor, true_types: torch.Tensor) -> Dict:
+def evaluate_diffusion_batch(pred_batch: torch.Tensor, true_batch: torch.Tensor,
+                           pred_types: Optional[torch.Tensor] = None,
+                           true_types: Optional[torch.Tensor] = None,
+                           input_format: str = 'auto') -> Dict:
     """
-    Get quick metrics with type information
+    Quick evaluation for a batch of generated structures
+    
+    Args:
+        pred_batch: predicted data
+        true_batch: true data  
+        pred_types: predicted atom types (optional)
+        true_types: true atom types (optional)
+        input_format: 'atoms', 'images', or 'auto' to detect automatically
     """
     evaluator = BatchedNanomaterialEvaluator()
-    results = evaluator.batched_complete_assignment_with_type_penalties(pred_batch, true_batch, pred_types, true_types)
+    
+    # Auto-detect format if not specified
+    if input_format == 'auto':
+        # Check dimensions to determine format
+        if pred_batch.dim() == 4:  # (batch, channels, height, width)
+            input_format = 'images'
+        elif pred_batch.dim() == 3:  # (batch, atoms, features)
+            input_format = 'atoms'
+        else:
+            raise ValueError(f"Cannot auto-detect format for tensor with {pred_batch.dim()} dimensions")
+    
+    if input_format == 'images':
+        return evaluator.evaluate_diffusion_format(pred_batch, true_batch, pred_types, true_types)
+    else:
+        return evaluator.batched_comprehensive_evaluation(pred_batch, true_batch, pred_types, true_types)
+
+def quick_batch_metric_with_types(pred_batch: torch.Tensor, true_batch: torch.Tensor,
+                                pred_types: torch.Tensor, true_types: torch.Tensor,
+                                input_format: str = 'auto') -> Dict:
+    """
+    Get quick metrics with type information for different input formats
+    """
+    evaluator = BatchedNanomaterialEvaluator()
+    
+    # Auto-detect format if not specified
+    if input_format == 'auto':
+        if pred_batch.dim() == 4:  # (batch, channels, height, width)
+            input_format = 'images'
+        elif pred_batch.dim() == 3:  # (batch, atoms, features)
+            input_format = 'atoms'
+        else:
+            raise ValueError(f"Cannot auto-detect format for tensor with {pred_batch.dim()} dimensions")
+    
+    if input_format == 'images':
+        # Convert image format to atom list format
+        pred_coords, pred_types_converted = evaluator.convert_image_to_atom_list(pred_batch, pred_types)
+        true_coords, true_types_converted = evaluator.convert_image_to_atom_list(true_batch, true_types)
+        
+        # Use the converted data
+        results = evaluator.batched_complete_assignment_with_type_penalties(
+            pred_coords, true_coords, pred_types_converted, true_types_converted
+        )
+    else:
+        # Use data as-is for atom list format
+        results = evaluator.batched_complete_assignment_with_type_penalties(
+            pred_batch, true_batch, pred_types, true_types
+        )
+    
     return {
         'mean_distance': results['batch_mean_distance'],
         'type_accuracy': results['batch_type_accuracy']

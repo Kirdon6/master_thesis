@@ -240,11 +240,10 @@ def run_experiment(config_path, use_multi_gpu=False):
                 "learning_rate": config['Train_config'].get('learning_rate', 1e-3),
                 "weight_decay": config['Train_config'].get('weight_decay', 0.0001),
                 "epochs": config['Train_config'].get('epochs', 100),                
-                "max_patience": config['Train_config'].get('max_patience', 20),
                 "lr_scheduler": config['Train_config'].get('lr_scheduler', True),
                 "lr_step_size": config['Train_config'].get('lr_step_size', 30),
                 "lr_gamma": config['Train_config'].get('lr_gamma', 0.1),
-                 "model_type": config['Model_config'].get('model_type', 'pos_frac'),               
+                "model_type": config['Model_config'].get('model_type', 'pos_frac'),
             }
 
             # Add atom_mapping_path if it exists
