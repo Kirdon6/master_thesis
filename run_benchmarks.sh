@@ -6,8 +6,8 @@
 #SBATCH --ntasks=1                      # Run a single task
 #SBATCH --cpus-per-task=4               # Use 4 CPU cores
 #SBATCH --mem=32G                       # Memory limit
-#SBATCH --gres=gpu:4                    # Request 4 GPUs
-#SBATCH --time=48:00:00                 # Time limit (48 hours)
+#SBATCH --gres=gpu:1                    # Request 1 GPUs
+#SBATCH --time=24:00:00                 # Time limit (2 hours)
 
 # Create logs directory if it doesn't exist
 mkdir -p slurm_logs
@@ -34,24 +34,44 @@ echo "# CPUs: $SLURM_CPUS_PER_TASK"
 # Verify GPUs are available
 nvidia-smi
 
-# Specify a single config file to run
-CONFIG_FILE="configs/diffusion_xpdf_abs_base.yaml"
-echo "Using config file: $CONFIG_FILE"
+# List of config files to run sequentially
+CONFIG_FILES=(
+    "configs/diffusion_xpdf_abs_base.yaml"
+    "configs/diffusion_xrd_frac_base.yaml"
+    "configs/diffusion_xrd_abs_base.yaml"
+    "configs/mlp_xpdf_abs_base.yaml"
+    "configs/mlp_xpdf_frac_base.yaml"
+    "configs/mlp_xrd_frac_base.yaml"
+    "configs/mlp_xrd_abs_base.yaml"
 
-# Extract model type from config file name
-MODEL_TYPE="Unknown"
-if [[ $CONFIG_FILE == *"diffusion"* ]]; then
-    MODEL_TYPE="Diffusion"
-elif [[ $CONFIG_FILE == *"mlp"* ]]; then
-    MODEL_TYPE="MLP"
-fi
+)
 
-echo "Running experiment with model type: $MODEL_TYPE"
+# Run each config file sequentially
+for CONFIG_FILE in "${CONFIG_FILES[@]}"; do
+    echo "----------------------------------------"
+    echo "Starting job with config file: $CONFIG_FILE"
+    echo "----------------------------------------"
 
-# Run the experiment script with multi-GPU config
-python run_benchmarks.py --config_path "$CONFIG_FILE" --use_multi_gpu False
+    # Extract model type from config file name
+    MODEL_TYPE="Unknown"
+    if [[ $CONFIG_FILE == *"diffusion"* ]]; then
+        MODEL_TYPE="Diffusion"
+    elif [[ $CONFIG_FILE == *"mlp"* ]]; then
+        MODEL_TYPE="MLP"
+    fi
+
+    echo "Running experiment with model type: $MODEL_TYPE"
+
+    # Run the experiment script
+    python run_benchmarks.py --config_path "$CONFIG_FILE"
+    
+    echo "----------------------------------------"
+    echo "Completed job with config file: $CONFIG_FILE"
+    echo "----------------------------------------"
+    echo ""
+done
 
 deactivate
 
 # Signal completion
-echo "Job completed at $(date)" 
+echo "All jobs completed at $(date)" 
