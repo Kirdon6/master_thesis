@@ -246,7 +246,6 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     val_optimized_typed_maes = []
     # Setup loss functions
     pos_criterion = torch.nn.SmoothL1Loss()
-    atom_type_criterion = torch.nn.CrossEntropyLoss()
     
     # Compute class weights for atom types if possible
     all_atom_types = []
@@ -255,7 +254,36 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         if atom_types is not None:
             all_atom_types.append(atom_types.flatten())
     
-
+    # Initialize default atom type criterion
+    atom_type_criterion = torch.nn.CrossEntropyLoss()
+    
+    # If we have atom types, calculate class weights for a weighted criterion
+    if all_atom_types:
+        all_atom_types_tensor = torch.cat(all_atom_types, dim=0)
+        # Convert to long before using bincount
+        all_atom_types_tensor = all_atom_types_tensor.long()
+        class_counts = torch.bincount(all_atom_types_tensor)
+        
+        # Get the model's number of atom types
+        num_atom_types = model.num_atom_types if hasattr(model, 'num_atom_types') else len(class_counts)
+        
+        # Ensure weights vector has correct length for all possible classes
+        if len(class_counts) < num_atom_types:
+            padding = torch.zeros(num_atom_types - len(class_counts), 
+                                 device=class_counts.device, 
+                                 dtype=class_counts.dtype)
+            class_counts = torch.cat([class_counts, padding])
+        
+        # Handle zeros in counts to avoid division by zero
+        class_counts = torch.clamp(class_counts, min=1.0)
+        
+        class_weights = 1.0 / class_counts.float()
+        # Normalize weights so they sum to number of classes
+        class_weights = class_weights * (num_atom_types / class_weights.sum())
+        
+        # Create weighted loss
+        atom_type_criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(device))
+        # print(f"Using weighted CrossEntropyLoss with weights of shape {class_weights.shape} for {num_atom_types} atom types")
 
 
     for epoch in range(epochs):

@@ -739,6 +739,30 @@ class DDPM(nn.Module):
         
         # If using atom types, add discrete loss
         if self.has_atom_types and atom_types is not None:
+            # Calculate class weights (inversely proportional to class frequency)
+            class_counts = torch.bincount(atom_types.flatten())
+            
+            # Ensure weights vector has correct length for all possible classes
+            # by extending with zeros for any missing classes
+            if len(class_counts) < self.num_atom_types:
+                padding = torch.zeros(self.num_atom_types - len(class_counts), 
+                                     device=class_counts.device, 
+                                     dtype=class_counts.dtype)
+                class_counts = torch.cat([class_counts, padding])
+            
+            # Handle zeros in counts to avoid division by zero
+            class_counts = torch.clamp(class_counts, min=1.0)
+            
+            class_weights = 1.0 / class_counts.float()
+            # Normalize weights so they sum to number of classes
+            class_weights = class_weights * (self.num_atom_types / class_weights.sum())
+
+            # Print weight information for debugging
+            # print(f"Using weights of shape {class_weights.shape} for {self.num_atom_types} atom types")
+            
+            # Create weighted loss
+            atom_type_criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(x0.device))
+            
             # Get atom type predictions
             atom_type_logits = network_output['atom_types']
             
@@ -751,7 +775,7 @@ class DDPM(nn.Module):
             atom_types_flat = atom_types.view(-1)
             
             # Calculate cross-entropy loss
-            discrete_loss = F.cross_entropy(atom_type_logits_flat, atom_types_flat)
+            discrete_loss = atom_type_criterion(atom_type_logits_flat, atom_types_flat)
             
             # Add to result
             result['discrete_loss'] = discrete_loss
@@ -916,8 +940,8 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             val_hausdorffs.append(val_metrics['hausdorff'])
             val_atom_type_accuracies.append(val_metrics['atom_type_accuracy'])
             val_optimized_maes.append(val_metrics['optimized_mae'])
-            val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
-            val_match_accuracies.append(val_metrics['match_accuracy'])
+            # val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
+            # val_match_accuracies.append(val_metrics['match_accuracy'])
             # Update progress bar with validation metrics
             progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_metrics['mae']:12.4f}",
                                      val_optimized_mae=f"{val_metrics['optimized_mae']:12.4f}",
@@ -925,7 +949,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                                      atom_acc=f"{val_metrics['atom_type_accuracy']:.2f}%",
                                      epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
             
-            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Optimized MAE: {val_metrics['optimized_mae']:.4f}, Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}, Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%, Val Match Acc: {val_metrics['match_accuracy']:.2f}%")
+            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Optimized MAE: {val_metrics['optimized_mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}, Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%")
         
         if per_epoch_callback:
             per_epoch_callback(ema_model.module if ema else model, epoch)
@@ -937,8 +961,8 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         'val_optimized_maes': val_optimized_maes,
         'val_hausdorffs': val_hausdorffs,
         'val_atom_type_accuracies': val_atom_type_accuracies,
-        'val_optimized_typed_maes': val_optimized_typed_maes,
-        'val_match_accuracies': val_match_accuracies
+        # 'val_optimized_typed_maes': val_optimized_typed_maes,
+        # 'val_match_accuracies': val_match_accuracies
     }
 
 
@@ -1018,17 +1042,17 @@ def validate(model, dataloader, device):
     optimized_mae = quick_batch_metric(all_preds, all_truths)
     hausdorff = hausdorff_distance(all_preds, all_truths)
     accuracy = atom_type_accuracy(all_atom_type_preds, all_atom_type_truths, model_type='diffusion')
-    typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths)
-    optimized_typed_mae = typed_metrics['mean_distance']
-    match_accuracy = typed_metrics['type_accuracy']
+    # typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths)
+    # optimized_typed_mae = typed_metrics['mean_distance']
+    # match_accuracy = typed_metrics['type_accuracy']
     
     return {
         'mae': mae.item(),
         'optimized_mae': optimized_mae,
         'hausdorff': hausdorff,
         'atom_type_accuracy': accuracy,
-        'optimized_typed_mae': optimized_typed_mae,
-        'match_accuracy': match_accuracy
+        # 'optimized_typed_mae': optimized_typed_mae,
+        # 'match_accuracy': match_accuracy
     }
     
 
@@ -1065,7 +1089,7 @@ def test(model, test_data, batch_size=256, device='cuda'):
         
     # Call validation function for testing
     test_metrics = validate(model, test_dataloader, device)
-    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%, Test Match Accuracy: {test_metrics['match_accuracy']:.2f}%")
+    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
     
     return test_metrics
 

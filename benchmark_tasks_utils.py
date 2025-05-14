@@ -63,13 +63,9 @@ def atom_type_accuracy(
 
         
             
-        # Reshape true_types if needed to match pred_classes
-        if true_atom_types.dim() == 1 and pred_atom_types.dim() == 2:
-            # Expand true_types to match pred_classes shape
-            if len(true_atom_types) == pred_atom_types.shape[0]:
-                true_atom_types = true_atom_types.unsqueeze(1).expand(-1, pred_atom_types.shape[1])
-            elif len(true_atom_types) == pred_atom_types.shape[0] * pred_atom_types.shape[1]:
-                true_atom_types = true_atom_types.reshape(pred_atom_types.shape[0], pred_atom_types.shape[1])
+        # Flatten tensors for comparison
+        pred_atom_types = pred_atom_types.reshape(-1)
+        true_atom_types = true_atom_types.reshape(-1)
         
         # Calculate accuracy
         correct = (pred_atom_types == true_atom_types).float().sum()
