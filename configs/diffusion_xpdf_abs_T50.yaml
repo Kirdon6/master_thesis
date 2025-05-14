@@ -30,4 +30,13 @@ Train_config:
   epochs: 100
   ema: true              # Use Exponential Moving Average
   seed: 42
-  num_workers: 0 
+  num_workers: 0
+
+# Weights & Biases configuration
+use_wandb: true
+wandb_config:
+  project: "cluster-structure-prediction"
+  mode: "online"
+  entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
+  name: "structure-prediction"  # Run name (will be auto-generated if null)
+  tags: ["diffusion", "xPDF", "CHILI"]  

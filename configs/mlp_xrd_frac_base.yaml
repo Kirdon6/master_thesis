@@ -34,3 +34,12 @@ Train_config:
   lr_scheduler: true
   lr_step_size: 30
   lr_gamma: 0.5 
+
+# Weights & Biases configuration
+use_wandb: true
+wandb_config:
+  project: "cluster-structure-prediction"
+  mode: "online"
+  entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
+  name: "structure-prediction"  # Run name (will be auto-generated if null)
+  tags: ["mlp", "xRD", "CHILI"] 
