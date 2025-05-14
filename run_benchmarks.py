@@ -21,6 +21,8 @@ import datetime
 import logging
 import torch
 import numpy as np
+import wandb
+from dotenv import load_dotenv
 from torch_geometric.loader import DataLoader
 from torch_geometric.seed import seed_everything
 import torch.nn as nn
@@ -225,6 +227,55 @@ def run_experiment(config_path, use_multi_gpu=False):
     with open(os.path.join(output_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
     
+    # Initialize wandb
+    use_wandb = config.get('use_wandb', False)
+    wandb_run = None
+    
+    if use_wandb:
+        wandb_config = config.get('wandb_config', {})
+        wandb_project = wandb_config.get('project', 'structure-prediction')
+        wandb_entity = wandb_config.get('entity', None)
+        wandb_name = wandb_config.get('name', f"{model_type.lower()}_{task_type}_{timestamp}")
+        wandb_tags = wandb_config.get('tags', [model_type.lower(), task_type])
+        wandb_mode = wandb_config.get('mode', 'online')
+
+        load_dotenv(".env")
+        wandb_api_key = os.getenv('WANDB_API_KEY')
+        if wandb_api_key:
+            os.environ['WANDB_API_KEY'] = wandb_api_key
+            wandb.login(key=wandb_api_key)
+        else:
+            logger.error("WANDB_API_KEY not found in environment variables")
+            exit(1)
+
+        # Add SLURM info to tags if available
+        if job_id != 'local':
+            wandb_tags.append(f"job_{job_id}")
+            if task_id != '0':
+                wandb_tags.append(f"task_{task_id}")
+                
+        logger.info(f"Initializing Weights & Biases with project={wandb_project}, name={wandb_name}")
+        
+        # Initialize wandb
+        wandb_run = wandb.init(
+            project=wandb_project,
+            entity=wandb_entity,
+            name=wandb_name,
+            config=config,
+            mode=wandb_mode,
+            tags=wandb_tags,
+            dir=output_dir
+        )
+        
+        # Log system info
+        wandb.log({
+            "system/device": str(device),
+            "system/num_gpus": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            "dataset/train_samples": len(dataset.train_set),
+            "dataset/val_samples": len(dataset.validation_set),
+            "dataset/test_samples": len(dataset.test_set)
+        })
+    
     # Start the appropriate training based on model type
     start_time = time.time()
     try:
@@ -244,6 +295,8 @@ def run_experiment(config_path, use_multi_gpu=False):
                 "lr_step_size": config['Train_config'].get('lr_step_size', 30),
                 "lr_gamma": config['Train_config'].get('lr_gamma', 0.1),
                 "model_type": config['Model_config'].get('model_type', 'pos_frac'),
+                "use_wandb": use_wandb,
+                "wandb_run": wandb_run
             }
 
             # Add atom_mapping_path if it exists
@@ -277,6 +330,8 @@ def run_experiment(config_path, use_multi_gpu=False):
                 "cond_embed_dim": config['Model_config'].get('cond_embed_dim', 64),
                 "image_size": tuple(config['Model_config'].get('image_size', (10, 10))),
                 "model_type": config['Model_config'].get('model_type', 'pos_frac'),
+                "use_wandb": use_wandb,
+                "wandb_run": wandb_run
             }
             
             # Add atom_mapping_path if it exists
@@ -311,6 +366,20 @@ def run_experiment(config_path, use_multi_gpu=False):
         if model_type.lower() == 'mlp':
             logger.info(f"Final test MAE: {metrics['test_mae']:.4f}")
             logger.info(f"Final test Hausdorff: {metrics['test_hausdorff']:.4f}")
+            logger.info(f"Final test optimized MAE: {metrics['test_optimized_mae']:.4f}")
+            logger.info(f"Final test atom type accuracy: {metrics['test_atom_type_accuracy']:.4f}")
+            logger.info(f"Final test optimized typed MAE: {metrics['test_optimized_typed_mae']:.4f}")
+            
+            # Log test metrics to wandb if enabled
+            if use_wandb and wandb_run is not None:
+                wandb.log({
+                    "test/mae": metrics['test_mae'],
+                    "test/hausdorff": metrics['test_hausdorff'],
+                    "test/optimized_mae": metrics.get('test_optimized_mae', 0),
+                    "test/atom_type_accuracy": metrics.get('test_atom_type_accuracy', 0),
+                    "test/optimized_typed_mae": metrics.get('test_optimized_typed_mae', 0),
+                    "training/total_time": total_time
+                })
         else:
             if 'val_maes' in metrics and len(metrics['val_maes']) > 0:
                 logger.info(f"Final validation MAE: {metrics['val_maes'][-1]:.4f}")
@@ -318,12 +387,47 @@ def run_experiment(config_path, use_multi_gpu=False):
                 logger.info(f"Test MAE: {metrics['test_mae']:.4f}")
             if 'test_hausdorff' in metrics:
                 logger.info(f"Test Hausdorff: {metrics['test_hausdorff']:.4f}")
+            if 'test_optimized_mae' in metrics:
+                logger.info(f"Test optimized MAE: {metrics['test_optimized_mae']:.4f}")
+            if 'test_atom_type_accuracy' in metrics:
+                logger.info(f"Test atom type accuracy: {metrics['test_atom_type_accuracy']:.4f}")
+            if 'test_optimized_typed_mae' in metrics:
+                logger.info(f"Test optimized typed MAE: {metrics['test_optimized_typed_mae']:.4f}")
+                
+            # Log test metrics to wandb if enabled
+            if use_wandb and wandb_run is not None:
+                wandb.log({
+                    "test/mae": metrics.get('test_mae', 0),
+                    "test/hausdorff": metrics.get('test_hausdorff', 0),
+                    "test/optimized_mae": metrics.get('test_optimized_mae', 0),
+                    "test/atom_type_accuracy": metrics.get('test_atom_type_accuracy', 0),
+                    "test/optimized_typed_mae": metrics.get('test_optimized_typed_mae', 0),
+                    "training/total_time": total_time
+                })
+                
+                # Save model checkpoint to wandb
+                # Save the model checkpoint to a file
+                checkpoint_path = os.path.join(output_dir, "model_checkpoint.pt")
+                torch.save(model.state_dict(), checkpoint_path)
+                
+                # Log the model checkpoint to wandb
+                wandb.save(checkpoint_path)
         
     except Exception as e:
         logger.error(f"Error during training: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
+        
+        # Log error to wandb if enabled
+        if use_wandb and wandb_run is not None:
+            wandb.log({"error": str(e)})
+            wandb.finish(exit_code=1)
+            
         sys.exit(1)
+    
+    # Finish wandb run if enabled
+    if use_wandb and wandb_run is not None:
+        wandb.finish()
     
     logger.info("Experiment completed successfully!")
     return model, metrics

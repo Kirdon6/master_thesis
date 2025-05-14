@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import math
 import pandas as pd
 import os
+import wandb
 
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
 from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
@@ -809,7 +810,7 @@ class DDPM(nn.Module):
         return loss_dict
 
 
-def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None, epochs=100, batch_size=256, device='cuda', ema=True, per_epoch_callback=None):
+def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None, epochs=100, batch_size=256, device='cuda', ema=True, per_epoch_callback=None, use_wandb=False, wandb_run=None):
     """
     Training loop with validation
     
@@ -837,6 +838,10 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         Whether to activate Exponential Model Averaging
     per_epoch_callback: function
         Called at the end of every epoch
+    use_wandb: bool
+        Whether to use Weights & Biases for logging
+    wandb_run: wandb.run
+        Existing wandb run to use for logging
     """
 
 
@@ -879,11 +884,32 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     val_atom_type_accuracies = []
     val_optimized_maes = []
     val_optimized_typed_maes = []
+    
+    # Log model architecture to wandb if enabled
+    if use_wandb and wandb_run is not None:
+        # Log model architecture as a table
+        model_params = sum(p.numel() for p in model.parameters())
+        wandb.run.summary["model/parameters"] = model_params
+        
+        # Log hyperparameters
+        wandb.config.update({
+            "batch_size": batch_size,
+            "epochs": epochs,
+            "optimizer": optimizer.__class__.__name__,
+            "scheduler": scheduler.__class__.__name__,
+            "learning_rate": optimizer.param_groups[0]['lr'],
+            "ema": ema,
+            "device": str(device),
+            "dataset_size": len(dataloader.dataset) if hasattr(dataloader, 'dataset') else "N/A",
+        })
+    
     for epoch in range(epochs):
         # Switch to train mode
         model.train()
 
         epoch_losses = []
+        epoch_continuous_losses = []
+        epoch_discrete_losses = []
         
         for i, batch in enumerate(dataloader):
             # Check if we're getting combined data (coords + atom types) or just coords
@@ -906,12 +932,15 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             scheduler.step()
             
             epoch_losses.append(loss['total_loss'].item())
-
+            if 'continuous_loss' in loss:
+                epoch_continuous_losses.append(loss['continuous_loss'].item())
+            if 'discrete_loss' in loss:
+                epoch_discrete_losses.append(loss['discrete_loss'].item())
+                
             # Update progress bar
             # Extract and display different loss components if available
-            
-            cont_loss = loss['continuous_loss']
-            disc_loss = loss['discrete_loss']
+            cont_loss = loss.get('continuous_loss', torch.tensor(0.0))
+            disc_loss = loss.get('discrete_loss', torch.tensor(0.0))
             total_loss = loss['total_loss']
             progress_bar.set_postfix(
                 total_loss=f"⠀{total_loss:12.4f}", 
@@ -930,6 +959,26 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         # Average training loss for this epoch
         avg_train_loss = sum(epoch_losses) / len(epoch_losses)
         train_losses.append(avg_train_loss)
+        
+        # Log training metrics to wandb
+        if use_wandb and wandb_run is not None:
+            # Log training metrics
+            metrics_dict = {
+                "train/loss": avg_train_loss,
+                "train/epoch": epoch,
+                "train/learning_rate": scheduler.get_last_lr()[0],
+            }
+            
+            # Add component losses if available
+            if epoch_continuous_losses:
+                avg_cont_loss = sum(epoch_continuous_losses) / len(epoch_continuous_losses)
+                metrics_dict["train/continuous_loss"] = avg_cont_loss
+                
+            if epoch_discrete_losses:
+                avg_disc_loss = sum(epoch_discrete_losses) / len(epoch_discrete_losses)
+                metrics_dict["train/discrete_loss"] = avg_disc_loss
+                
+            wandb.log(metrics_dict, step=epoch)
         
         # Validation step
         if val_dataloader is not None:
@@ -952,9 +1001,27 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                 Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.6f},
                 Val Hausdorff: {val_metrics['hausdorff']:.6f},
                 Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%""")
+            
+            # Log validation metrics to wandb
+            if use_wandb and wandb_run is not None:
+                wandb.log({
+                    "val/mae": val_metrics['mae'],
+                    "val/hausdorff": val_metrics['hausdorff'],
+                    "val/atom_type_accuracy": val_metrics['atom_type_accuracy'],
+                    "val/optimized_mae": val_metrics['optimized_mae'],
+                    "val/optimized_typed_mae": val_metrics['optimized_typed_mae'],
+                    "val/epoch": epoch,
+                }, step=epoch)
                     
         if per_epoch_callback:
-            per_epoch_callback(ema_model.module if ema else model, epoch)
+            callback_result = per_epoch_callback(ema_model.module if ema else model, epoch)
+            
+            # If callback produces visualizations, log them to wandb
+            if use_wandb and wandb_run is not None and callback_result:
+                # If the callback returns a dict with paths to saved files, log them
+                if isinstance(callback_result, dict) and 'image_paths' in callback_result:
+                    for img_name, img_path in callback_result['image_paths'].items():
+                        wandb.log({f"visualizations/{img_name}": wandb.Image(img_path)}, step=epoch)
     
     # Return training metrics
     return {
@@ -1353,7 +1420,8 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
 def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1000, learning_rate=1e-3, 
                                   epochs=100, batch_size=256, ema=True, cond_dim=6000, 
                                   cond_embed_dim=64, image_size=(10, 10), model_type='unknown',
-                                  atom_mapping_path=None, sample_dir=None, cond_type='xPDF'):
+                                  atom_mapping_path=None, sample_dir=None, cond_type='xPDF',
+                                  use_wandb=False, wandb_run=None):
     """
     Train a vector-conditioned DDPM model on RGB images
     
@@ -1385,6 +1453,10 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         Type of model being trained (e.g., 'pos_abs' or 'pos_frac')
     atom_mapping_path: str, optional
         Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
+    use_wandb: bool
+        Whether to use Weights & Biases for logging
+    wandb_run: wandb.run
+        Existing wandb run to use for logging
         
     Returns
     -------
@@ -1492,9 +1564,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
 
     def reporter(model, epoch):
         """Callback function used for plotting 3D structures during training after each epoch"""
-        # Only generate plots every 100 epochs
-        # if epoch % 10 != 0:
-        #     return
+        # Only generate plots every few epochs to save time and space
+        if use_wandb and wandb_run is not None and epoch % 10 != 0 and epoch != epochs - 1:
+            return
             
         # Switch to eval mode
         model.eval()
@@ -1758,6 +1830,20 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             filename_3d = os.path.join(samples_dir, f"epoch_{epoch:03d}_3d_plot.png")
             plt.savefig(filename_3d)
             plt.close()
+            
+            # Log the plot to wandb if enabled
+            if use_wandb and wandb_run is not None:
+                wandb.log({
+                    "visualizations/3d_structures": wandb.Image(filename_3d),
+                    "epoch": epoch
+                })
+                
+            # Return dict of image paths for potential wandb logging
+            return {
+                "image_paths": {
+                    "3d_structures": filename_3d
+                }
+            }
 
     # Call training loop with validation
     metrics = train(
@@ -1771,7 +1857,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         batch_size=batch_size,
         device=device, 
         ema=ema, 
-        per_epoch_callback=reporter
+        per_epoch_callback=reporter,
+        use_wandb=use_wandb,
+        wandb_run=wandb_run
     )
     
     # Save model
@@ -1785,8 +1873,19 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         metrics['test_mae'] = test_metrics['mae']
         metrics['test_hausdorff'] = test_metrics['hausdorff']
         metrics['test_atom_type_accuracy'] = test_metrics['atom_type_accuracy']
+        metrics['test_optimized_mae'] = test_metrics['optimized_mae']
         metrics['test_optimized_typed_mae'] = test_metrics['optimized_typed_mae']
         print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
+        
+        # Log final test metrics to wandb
+        if use_wandb and wandb_run is not None:
+            wandb.log({
+                "test/mae": test_metrics['mae'],
+                "test/hausdorff": test_metrics['hausdorff'],
+                "test/atom_type_accuracy": test_metrics['atom_type_accuracy'],
+                "test/optimized_mae": test_metrics['optimized_mae'],
+                "test/optimized_typed_mae": test_metrics['optimized_typed_mae']
+            })
     
     # Collect model parameters
     model_parameters = {
@@ -1808,5 +1907,20 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Save metrics to CSV
     metrics_path = os.path.join(samples_dir, "final_metrics.csv")
     save_metrics_to_csv(metrics, metrics_path, model_parameters)
+    
+    # Log model architecture summary to wandb if enabled
+    if use_wandb and wandb_run is not None:
+        # Count total parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        
+        # Add model summary to wandb
+        wandb.run.summary.update({
+            "model/total_parameters": total_params,
+            "model/type": "DDPM",
+            "model/diffusion_steps": T,
+            "training/final_loss": metrics['train_losses'][-1] if metrics['train_losses'] else None,
+            "results/best_val_mae": min(metrics['val_maes']) if metrics['val_maes'] else None,
+            "results/final_test_mae": metrics.get('test_mae', None),
+        })
     
     return model, metrics 
