@@ -10,7 +10,7 @@ import pandas as pd
 import os
 
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
-from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types
+from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
 
 class GaussianFourierProjection(nn.Module):
     """Gaussian random features for encoding time steps."""  
@@ -879,7 +879,6 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     val_atom_type_accuracies = []
     val_optimized_maes = []
     val_optimized_typed_maes = []
-    val_match_accuracies = []
     for epoch in range(epochs):
         # Switch to train mode
         model.train()
@@ -916,8 +915,8 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             total_loss = loss['total_loss']
             progress_bar.set_postfix(
                 total_loss=f"⠀{total_loss:12.4f}", 
-                cont_loss=f"{cont_loss:12.4f}",
-                disc_loss=f"{disc_loss:12.4f}",
+                pos_loss=f"{cont_loss:12.4f}",
+                atom_loss=f"{disc_loss:12.4f}",
                 epoch=f"{epoch+1}/{epochs}", 
                 lr=f"{scheduler.get_last_lr()[0]:.2E}"
             )
@@ -940,8 +939,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             val_hausdorffs.append(val_metrics['hausdorff'])
             val_atom_type_accuracies.append(val_metrics['atom_type_accuracy'])
             val_optimized_maes.append(val_metrics['optimized_mae'])
-            # val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
-            # val_match_accuracies.append(val_metrics['match_accuracy'])
+            val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
             # Update progress bar with validation metrics
             progress_bar.set_postfix(loss=f"⠀{avg_train_loss:12.4f}", val_mae=f"{val_metrics['mae']:12.4f}",
                                      val_optimized_mae=f"{val_metrics['optimized_mae']:12.4f}",
@@ -949,8 +947,12 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                                      atom_acc=f"{val_metrics['atom_type_accuracy']:.2f}%",
                                      epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
             
-            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val MAE: {val_metrics['mae']:.4f}, Val Optimized MAE: {val_metrics['optimized_mae']:.4f}, Val Hausdorff: {val_metrics['hausdorff']:.4f}, Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%")
-        
+            print(f"""\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f}, 
+                Val MAE: {val_metrics['mae']:.6f}, Val Optimized MAE: {val_metrics['optimized_mae']:.6f}, 
+                Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.6f},
+                Val Hausdorff: {val_metrics['hausdorff']:.6f},
+                Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%""")
+                    
         if per_epoch_callback:
             per_epoch_callback(ema_model.module if ema else model, epoch)
     
@@ -961,8 +963,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         'val_optimized_maes': val_optimized_maes,
         'val_hausdorffs': val_hausdorffs,
         'val_atom_type_accuracies': val_atom_type_accuracies,
-        # 'val_optimized_typed_maes': val_optimized_typed_maes,
-        # 'val_match_accuracies': val_match_accuracies
+        'val_optimized_typed_maes': val_optimized_typed_maes,
     }
 
 
@@ -1007,7 +1008,7 @@ def validate(model, dataloader, device):
                 
                 # Generate samples using the model's sampling functionality
                 samples = model.sample(x.size(0), cond)
-                
+                batch_size = x.size(0)
                 # Extract coordinate and atom type parts
                 if isinstance(samples, dict):
                     sample_coords = samples['coords']
@@ -1015,6 +1016,8 @@ def validate(model, dataloader, device):
                     
                     # Store atom type predictions and truths for accuracy calculation
                     if sample_atom_types is not None:
+                        sample_atom_types = sample_atom_types.view(batch_size, -1)
+                        atom_types = atom_types.view(batch_size, -1)
                         all_atom_type_preds.append(sample_atom_types)
                         all_atom_type_truths.append(atom_types)
 
@@ -1042,17 +1045,17 @@ def validate(model, dataloader, device):
     optimized_mae = quick_batch_metric(all_preds, all_truths)
     hausdorff = hausdorff_distance(all_preds, all_truths)
     accuracy = atom_type_accuracy(all_atom_type_preds, all_atom_type_truths, model_type='diffusion')
-    # typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths)
-    # optimized_typed_mae = typed_metrics['mean_distance']
-    # match_accuracy = typed_metrics['type_accuracy']
+    typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths, input_format='images')
+    optimized_typed_mae = typed_metrics['mean_distance']
+
     
     return {
         'mae': mae.item(),
         'optimized_mae': optimized_mae,
         'hausdorff': hausdorff,
         'atom_type_accuracy': accuracy,
-        # 'optimized_typed_mae': optimized_typed_mae,
-        # 'match_accuracy': match_accuracy
+        'optimized_typed_mae': optimized_typed_mae,
+
     }
     
 
@@ -1089,7 +1092,11 @@ def test(model, test_data, batch_size=256, device='cuda'):
         
     # Call validation function for testing
     test_metrics = validate(model, test_dataloader, device)
-    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
+    print(f"""Test MAE: {test_metrics['mae']:.4f},
+        Test Optimized MAE: {test_metrics['optimized_mae']:.4f},
+        Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f},
+        Test Hausdorff: {test_metrics['hausdorff']:.4f},
+        Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%""")
     
     return test_metrics
 
@@ -1302,6 +1309,14 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     if 'val_hausdorffs' in metrics and len(metrics['val_hausdorffs']) > 0:
         data['final_val_hausdorff'] = metrics['val_hausdorffs'][-1]
     
+    if 'val_optimized_maes' in metrics and len(metrics['val_optimized_maes']) > 0:
+        data['final_val_optimized_mae'] = metrics['val_optimized_maes'][-1]
+    
+    if 'val_optimized_typed_maes' in metrics and len(metrics['val_optimized_typed_maes']) > 0:
+        data['final_val_optimized_typed_mae'] = metrics['val_optimized_typed_maes'][-1]
+
+    
+    
     # Add atom type accuracy metrics
     if 'val_atom_type_accuracies' in metrics and len(metrics['val_atom_type_accuracies']) > 0:
         data['final_val_atom_type_accuracy'] = metrics['val_atom_type_accuracies'][-1]
@@ -1311,6 +1326,13 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     
     if 'test_hausdorff' in metrics:
         data['test_hausdorff'] = metrics['test_hausdorff']
+    
+    if 'test_optimized_mae' in metrics:
+        data['test_optimized_mae'] = metrics['test_optimized_mae']
+    
+    if 'test_optimized_typed_mae' in metrics:
+        data['test_optimized_typed_mae'] = metrics['test_optimized_typed_mae']
+
     
     # Add test atom type accuracy if available
     if 'test_atom_type_accuracy' in metrics:
@@ -1471,8 +1493,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     def reporter(model, epoch):
         """Callback function used for plotting 3D structures during training after each epoch"""
         # Only generate plots every 100 epochs
-        if epoch % 10 != 0:
-            return
+        # if epoch % 10 != 0:
+        #     return
             
         # Switch to eval mode
         model.eval()
@@ -1483,6 +1505,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             all_sample_points = []
             all_gt_atom_types = []
             all_sample_atom_types = []
+            all_aligned_samples = []
             
             # Check if we have atom types data
             have_atom_types = len(ground_truth_atom_types) > 0
@@ -1498,8 +1521,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 if have_atom_types:
                     gt_atom_type = ground_truth_atom_types[gt_idx:gt_idx+1]
                 
-                # Generate 3 samples for each ground truth image
-                samples = model.sample(3, cond)
+                # Generate 2 samples for each ground truth image
+                samples = model.sample(2, cond)
                 
                 # Handle case where samples is a dictionary (has both coords and atom types)
                 sample_coords = samples['coords'] if isinstance(samples, dict) else samples
@@ -1508,6 +1531,46 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 # Use raw data for visualization
                 gt_normalized_img = gt_image.cpu()
                 samples_normalized_img = sample_coords.cpu()
+                
+                # Process samples
+                sample_points_list = []
+                sample_atom_types_list = []
+                aligned_structures_list = []
+                
+                # Process each sample individually
+                for i in range(2):
+                    # Extract sample points for 3D plotting
+                    sample_points = samples_normalized_img[i].permute(1, 2, 0)
+                    sample_points = sample_points.reshape(-1, 3)
+                    sample_points_list.append(sample_points)
+                    
+                    # Extract atom types if available
+                    if sample_atom_types is not None:
+                        sample_atom = sample_atom_types[i].cpu().view(-1)
+                        sample_atom_types_list.append(sample_atom)
+                    
+                    # Get the best alignment for each sample
+                    # We need to properly reshape the tensors for the Kabsch alignment
+                    # The function expects tensors of shape [batch_size, n_atoms, 3]
+                    
+                    # For predicted sample, reshape from [3, H, W] to [1, H*W, 3]
+                    sample_for_align = samples_normalized_img[i].clone()
+                    sample_for_align = sample_for_align.permute(1, 2, 0).reshape(1, -1, 3)
+                    
+                    # For ground truth, reshape from [1, 3, H, W] to [1, H*W, 3]
+                    gt_for_align = gt_normalized_img.clone()
+                    gt_for_align = gt_for_align.permute(0, 2, 3, 1).reshape(1, -1, 3)
+                    
+                    # Get alignment using the nano_evaluator function
+                    # We're not passing atom types anymore based on user's edit
+                    aligned_structure = get_best_alignment_for_visualization(sample_for_align, gt_for_align)
+                    aligned_structures_list.append(aligned_structure)
+                
+                # Store all data for this ground truth example
+                all_sample_points.append(sample_points_list)
+                if sample_atom_types is not None:
+                    all_sample_atom_types.append(sample_atom_types_list)
+                all_aligned_samples.append(aligned_structures_list)
                 
                 # Extract ground truth points for 3D plotting
                 gt_points = gt_normalized_img[0].permute(1, 2, 0)  # [height, width, channels]
@@ -1518,26 +1581,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                 if gt_atom_type is not None:
                     gt_atom = gt_atom_type[0].cpu().view(-1)
                     all_gt_atom_types.append(gt_atom)
-                
-                # Extract sample points for 3D plotting
-                row_samples = []
-                row_atom_types = []
-                for i in range(3):
-                    sample_points = samples_normalized_img[i].permute(1, 2, 0)
-                    sample_points = sample_points.reshape(-1, 3)
-                    row_samples.append(sample_points)
-                    
-                    # Extract atom types if available
-                    if sample_atom_types is not None:
-                        sample_atom = sample_atom_types[i].cpu().view(-1)
-                        row_atom_types.append(sample_atom)
-                
-                all_sample_points.append(row_samples)
-                if row_atom_types:
-                    all_sample_atom_types.append(row_atom_types)
             
-            # Create the 3D plot with 2 rows, each with GT + 3 samples
-            fig = plt.figure(figsize=(20, 10), facecolor='white')
+            # Create the 3D plot with 2 rows, each with GT, 2 predictions and 2 aligned predictions (5 columns)
+            fig = plt.figure(figsize=(30, 12), facecolor='white')
             
             # Custom function to style each 3D plot
             def style_3d_axes(ax, title):
@@ -1626,11 +1672,10 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         cbar.set_ticks(ticks)
                         cbar.set_ticklabels(labels)
             
-            # Plot both rows (one for each ground truth)
+            # Plot each row (one structure per row, with five different views)
             for row_idx in range(len(all_gt_points)):
-                # Plot ground truth as first plot in each row
-                plot_position = row_idx * 4 + 1  # 1 or 5
-                ax_gt = fig.add_subplot(2, 4, plot_position, projection='3d')
+                # Ground truth (1st column)
+                ax_gt = fig.add_subplot(2, 5, row_idx*5+1, projection='3d')
                 
                 # If atom types are available, use them for coloring
                 if all_gt_atom_types:
@@ -1644,25 +1689,67 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                     ax_gt.scatter(all_gt_points[row_idx][:, 0], all_gt_points[row_idx][:, 1], all_gt_points[row_idx][:, 2], 
                                 c='blue', marker='o', s=25, alpha=0.8)
                 
-                style_3d_axes(ax_gt, f'Ground Truth Structure')
+                style_3d_axes(ax_gt, f'Ground Truth Structure {row_idx+1}')
                 
-                # Plot 3 samples for this ground truth
-                for sample_idx in range(3):
-                    plot_position = row_idx * 4 + sample_idx + 2  # [2,3,4] or [6,7,8]
-                    ax = fig.add_subplot(2, 4, plot_position, projection='3d')
+                # Process each sample and its alignment
+                for sample_idx in range(2):
+                    # Original Prediction
+                    pred_col = row_idx*5 + 2 + sample_idx*2  # Column 2 or 4
+                    ax_pred = fig.add_subplot(2, 5, pred_col, projection='3d')
                     sample_points = all_sample_points[row_idx][sample_idx]
                     
                     # If atom types are available, use them for coloring
-                    if all_sample_atom_types:
+                    if len(all_sample_atom_types) > row_idx:
                         # Use integer categories directly (no normalization)
                         colors = all_sample_atom_types[row_idx][sample_idx].numpy()
-                        ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2],
-                                  c=colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
+                        ax_pred.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2],
+                                      c=colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
                     else:
-                        ax.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2], 
-                                  c='blue', marker='o', s=25, alpha=0.8)
+                        ax_pred.scatter(sample_points[:, 0], sample_points[:, 1], sample_points[:, 2], 
+                                      c='red', marker='o', s=25, alpha=0.8)
                     
-                    style_3d_axes(ax, f'Sample {sample_idx+1}')
+                    style_3d_axes(ax_pred, f'Original Prediction {sample_idx+1}')
+                    
+                    # Aligned Prediction
+                    align_col = row_idx*5 + 3 + sample_idx*2  # Column 3 or 5
+                    ax_aligned = fig.add_subplot(2, 5, align_col, projection='3d')
+                    
+                    try:
+                        aligned_structure = all_aligned_samples[row_idx][sample_idx]
+                        
+                        # Get the aligned coordinates from the result
+                        aligned_points = aligned_structure['aligned_pred_coords'][0]  # Get the first batch element
+                        
+                        # Reshape for plotting if needed
+                        if aligned_points.ndim == 4:  # [batch, channels, height, width]
+                            aligned_points = aligned_points[0].permute(1, 2, 0).reshape(-1, 3)
+                        elif aligned_points.ndim == 3:  # [batch, atoms, 3]
+                            aligned_points = aligned_points[0]  # Get first batch element
+                        
+                        # IMPORTANT: Use the same atom types from the original prediction for coloring
+                        # This ensures the aligned visualization matches the color scheme of the original
+                        if len(all_sample_atom_types) > row_idx and num_atom_types > 0:
+                            # Use the same atom types as used for the original prediction
+                            aligned_atom_types = all_sample_atom_types[row_idx][sample_idx].numpy()
+                            
+                            # If atom colors don't match the points, use a fixed color
+                            if len(aligned_atom_types) != len(aligned_points):
+                                ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                              c='green', marker='o', s=25, alpha=0.8)
+                            else:
+                                ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                              c=aligned_atom_types, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
+                        else:
+                            ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                          c='green', marker='o', s=25, alpha=0.8)
+                    
+                    except Exception as e:
+                        # If there's an error processing the aligned structure, just show an empty plot
+                        print(f"Error visualizing aligned structure: {e}")
+                        # Add a text annotation explaining the error
+                        ax_aligned.text(0, 0, 0, "Alignment Error", fontsize=12)
+                    
+                    style_3d_axes(ax_aligned, f'Aligned Prediction {sample_idx+1}')
             
             # Adjust layout for better spacing - give more space on the left for the colorbar
             plt.subplots_adjust(wspace=0.3, hspace=0.3, left=0.15)
@@ -1698,6 +1785,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         metrics['test_mae'] = test_metrics['mae']
         metrics['test_hausdorff'] = test_metrics['hausdorff']
         metrics['test_atom_type_accuracy'] = test_metrics['atom_type_accuracy']
+        metrics['test_optimized_typed_mae'] = test_metrics['optimized_typed_mae']
         print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
     
     # Collect model parameters

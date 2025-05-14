@@ -1,19 +1,14 @@
 import torch.nn as nn
-import torch.nn.functional as F
 import torch
 import os
-import json
 import logging
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.colors as mcolors
-import pandas as pd
-from scipy.spatial.distance import directed_hausdorff
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 import numpy as np
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
-from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types
+from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
 
 class BaselineMLP(nn.Module):
     """
@@ -359,7 +354,15 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             scheduler.step()
             
             epoch_losses.append(total_loss.item())
-            progress_bar.set_postfix(loss=f"⠀{total_loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}", lr=f"{scheduler.get_last_lr()[0]:.2E}")
+
+            progress_bar.set_postfix(
+                total_loss=f"{total_loss.item():8.4f}",
+                pos_loss=f"{pos_loss.item():8.4f}",
+                atom_loss=f"{atom_type_loss.item():8.4f}",
+                epoch=f"{epoch+1}/{epochs}",
+                lr=f"{scheduler.get_last_lr()[0]:.2E}"
+            )
+
             progress_bar.update()
         
         # Calculate average training loss
@@ -374,7 +377,6 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
             val_atom_type_accuracies.append(val_metrics['atom_type_accuracy'])
             val_optimized_maes.append(val_metrics['optimized_mae'])
             val_optimized_typed_maes.append(val_metrics['optimized_typed_mae'])
-            val_match_accuracies.append(val_metrics['match_accuracy'])
 
 
             progress_bar.set_postfix(
@@ -385,7 +387,11 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
                 epoch=f"{epoch+1}/{epochs}", 
                 lr=f"{scheduler.get_last_lr()[0]:.2E}"
             )
-            print(f"\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f}, Val MAE: {val_metrics['mae']:.6f}, Val Optimized MAE: {val_metrics['optimized_mae']:.6f}, Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.6f}, Val Hausdorff: {val_metrics['hausdorff']:.6f}, Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%, Val Match Acc: {val_metrics['match_accuracy']:.2f}%")
+            print(f"""\nEpoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f}, 
+                Val MAE: {val_metrics['mae']:.6f}, Val Optimized MAE: {val_metrics['optimized_mae']:.6f}, 
+                Val Optimized Typed MAE: {val_metrics['optimized_typed_mae']:.6f}, 
+                Val Hausdorff: {val_metrics['hausdorff']:.6f},
+                Atom Type Acc: {val_metrics['atom_type_accuracy']:.2f}%""")
         
         if per_epoch_callback:
             per_epoch_callback(model, epoch)
@@ -441,7 +447,6 @@ def validate(model, val_dataloader, device):
     val_optimized_mae = quick_batch_metric(all_preds, all_truths)
     typed_metrics = quick_batch_metric_with_types(all_preds, all_truths, all_atom_type_preds, all_atom_type_truths, input_format='atoms')
     optimized_typed_mae = typed_metrics['mean_distance']
-    match_accuracy = typed_metrics['type_accuracy']
 
     val_hausdorff = hausdorff_distance(all_preds, all_truths)
     val_accuracy = atom_type_accuracy(all_atom_type_preds, all_atom_type_truths, model_type='mlp')
@@ -454,7 +459,6 @@ def validate(model, val_dataloader, device):
             'hausdorff': val_hausdorff,
             'atom_type_accuracy': val_accuracy,
             'optimized_typed_mae': optimized_typed_mae,
-            'match_accuracy': match_accuracy
         }
 
 def test(model, test_data, batch_size=256, device='cuda'):
@@ -469,7 +473,11 @@ def test(model, test_data, batch_size=256, device='cuda'):
         test_dataloader = test_data
     # Call validation function for testing
     test_metrics = validate(model, test_dataloader, device)
-    print(f"Test MAE: {test_metrics['mae']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%, Test Match Accuracy: {test_metrics['match_accuracy']:.2f}%")
+    print(f"""Test MAE: {test_metrics['mae']:.4f}, 
+        Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, 
+        Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, 
+        Test Hausdorff: {test_metrics['hausdorff']:.4f}, 
+        Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%""")
     
     return test_metrics
 
@@ -504,9 +512,6 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     if 'val_optimized_typed_maes' in metrics and len(metrics['val_optimized_typed_maes']) > 0:
         data['final_val_optimized_typed_mae'] = metrics['val_optimized_typed_maes'][-1]
     
-    if 'val_match_accuracies' in metrics and len(metrics['val_match_accuracies']) > 0:
-        data['final_val_match_accuracy'] = metrics['val_match_accuracies'][-1]
-    
     if 'test_mae' in metrics:
         data['test_mae'] = metrics['test_mae']
     
@@ -523,8 +528,6 @@ def save_metrics_to_csv(metrics, filepath, model_params=None):
     if 'test_optimized_typed_mae' in metrics:
         data['test_optimized_typed_mae'] = metrics['test_optimized_typed_mae']
     
-    if 'test_match_accuracy' in metrics:
-        data['test_match_accuracy'] = metrics['test_match_accuracy']
     
     # Add model parameters if provided
     if model_params:
@@ -748,8 +751,8 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
     # Function to visualize ground truth vs predictions
     def visualize_predictions(model, epoch):
         """Create a visualization of ground truth vs predicted structures with atom types"""
-        if epoch % 10 != 0 or epoch == epochs - 1:
-            return
+        # if epoch % 10 != 0 or epoch == epochs - 1:
+        #     return
         model.eval()
         
         with torch.no_grad():
@@ -758,6 +761,7 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
             all_sample_points = []
             all_gt_atom_types = []
             all_sample_atom_types = []
+            all_aligned_samples = []
 
             for gt_idx in range(len(ground_truth_positions)):
                 gt_points = ground_truth_positions[gt_idx]
@@ -776,6 +780,34 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                 
                 if sample_atom_types is not None:
                     sample_atom_types = sample_atom_types.cpu()
+
+                # Get the best alignment for visualization
+                # We need to properly reshape the tensors for the Kabsch alignment
+                # The function expects tensors of shape [batch_size, n_atoms, 3]
+                try:
+                    # Reshape sample and ground truth points for alignment
+                    # For model output, ensure it's [batch, atoms, 3]
+                    sample_for_align = sample_points.clone()
+                    if sample_for_align.ndim == 2:  # [atoms, 3]
+                        sample_for_align = sample_for_align.unsqueeze(0)  # Add batch dimension [1, atoms, 3]
+                    
+                    # For ground truth, ensure it's [batch, atoms, 3]
+                    gt_for_align = gt_points.clone()
+                    if gt_for_align.ndim == 2:  # [atoms, 3]
+                        gt_for_align = gt_for_align.unsqueeze(0)  # Add batch dimension [1, atoms, 3]
+                    
+                    # Perform alignment without atom types to avoid type errors
+                    aligned_structures = get_best_alignment_for_visualization(sample_for_align, gt_for_align)
+                    all_aligned_samples.append(aligned_structures)
+                except Exception as e:
+                    print(f"Error during alignment: {e}")
+                    # Create a dummy alignment result structure to avoid further errors
+                    all_aligned_samples.append({
+                        'aligned_pred_coords': sample_points.unsqueeze(0),  # Just use original coords
+                        'true_coords': gt_points.unsqueeze(0),
+                        'pred_types': sample_atom_types,
+                        'true_types': gt_atom_types
+                    })
 
                 # Store 3D sample points for plotting
                 all_gt_points.append(gt_points)
@@ -808,9 +840,11 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                             sample_atom_types = sample_atom_classes
                     
                     all_sample_atom_types.append(sample_atom_types)
+
+                
             
-            # Create 2x2 grid for visualization
-            fig = plt.figure(figsize=(15, 15), facecolor='white')
+            # Create 3x2 grid for visualization (2 rows, 3 columns)
+            fig = plt.figure(figsize=(24, 12), facecolor='white')
             
             # Function to style 3D axes
             def style_3d_axes(ax, title):
@@ -885,17 +919,15 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                         cbar.set_ticks(ticks)
                         cbar.set_ticklabels(labels)
             
-            # Plot each row (one ground truth and one prediction)
+            # Plot each row (one structure per row, with three different views: GT, prediction, aligned)
             for i in range(min(2, len(all_gt_points))):
-                # Ground truth
-                ax_gt = fig.add_subplot(2, 2, i*2+1, projection='3d')
+                # Ground truth (1st column)
+                ax_gt = fig.add_subplot(2, 3, i*3+1, projection='3d')
                 gt_points = all_gt_points[i]
                 
                 # If atom types are available, use them for coloring
                 if i < len(all_gt_atom_types) and num_atom_types > 0:
                     gt_atom_colors = all_gt_atom_types[i].numpy()
-                    # Remove debug print
-                    # print(f"GT points shape: {gt_points.shape}, GT atom colors shape: {gt_atom_colors.shape}")
                     
                     # Keep this essential code for flattening and reshaping
                     if gt_points.ndim == 3:  # If points is [batch, atoms, xyz]
@@ -915,9 +947,6 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                                 # Try to reshape or use a default color
                                 gt_atom_colors = np.zeros(len(gt_points_flat), dtype=int)
                         
-                        # Remove debug print
-                        # print(f"After reshaping - points: {gt_points_flat.shape}, colors: {gt_atom_colors.shape}")
-                        
                         # Final safety check - make sure the colors array is a flat 1D array
                         if gt_atom_colors.ndim != 1:
                             gt_atom_colors = gt_atom_colors.flatten()
@@ -934,32 +963,29 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                                                      mode='constant', 
                                                      constant_values=0)
                         
-                        # Remove debug print
-                        # print(f"Final check - points: {gt_points_flat.shape}, colors: {gt_atom_colors.shape}")
                         ax_gt.scatter(gt_points_flat[:, 0], gt_points_flat[:, 1], gt_points_flat[:, 2],
                                     c=gt_atom_colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
                     else:
                         # If atom colors don't match the points, use a fixed color
                         if len(gt_atom_colors) != len(gt_points):
-                            # Remove debug print
-                            # print(f"WARNING: Atom colors don't match points - using default coloring")
                             ax_gt.scatter(gt_points[:, 0], gt_points[:, 1], gt_points[:, 2],
                                       c='blue', marker='o', s=25, alpha=0.8)
                         else:
                             ax_gt.scatter(gt_points[:, 0], gt_points[:, 1], gt_points[:, 2],
                                       c=gt_atom_colors, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
+                else:
+                    ax_gt.scatter(gt_points[:, 0], gt_points[:, 1], gt_points[:, 2],
+                                c='blue', marker='o', s=25, alpha=0.8)
                 
                 style_3d_axes(ax_gt, f'Ground Truth Structure {i+1}')
                 
-                # Prediction
-                ax_pred = fig.add_subplot(2, 2, i*2+2, projection='3d')
+                # Original Prediction (2nd column)
+                ax_pred = fig.add_subplot(2, 3, i*3+2, projection='3d')
                 pred_points = all_sample_points[i]
                 
                 # If atom type predictions are available
                 if i < len(all_sample_atom_types) and num_atom_types > 0:
                     pred_atom_types = all_sample_atom_types[i].numpy()
-                    # Remove debug print
-                    # print(f"Pred points shape: {pred_points.shape}, Pred atom types shape: {pred_atom_types.shape}")
                     
                     # Keep all the reshaping code
                     if pred_points.ndim == 3:  # If points is [batch, atoms, xyz]
@@ -971,8 +997,6 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                         if pred_atom_types.ndim > 1:
                             # The prediction has shape [batch, num_classes] or [batch, atoms, num_classes]
                             # We need to convert it to a 1D array with the same length as pred_points_flat
-                            # Remove debug print
-                            # print(f"DEBUG: Flattening pred_atom_types with shape {pred_atom_types.shape}")
                             
                             if pred_atom_types.shape == (pred_points.shape[0], pred_points.shape[1]):
                                 # It's already the right shape before flattening
@@ -998,12 +1022,7 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                         
                         # Ensure pred_atom_types is 1D and matches points length
                         if pred_atom_types.ndim > 1 or len(pred_atom_types) != len(pred_points_flat):
-                            # Remove debug print
-                            # print(f"WARNING: Fixing pred_atom_types shape from {pred_atom_types.shape} to ({len(pred_points_flat)},)")
                             pred_atom_types = np.zeros(len(pred_points_flat), dtype=int)
-                        
-                        # Remove debug print
-                        # print(f"After reshaping - points: {pred_points_flat.shape}, colors: {pred_atom_types.shape}")
                         
                         # Final safety check - make sure the colors array is a flat 1D array
                         if pred_atom_types.ndim != 1:
@@ -1021,22 +1040,77 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
                                                      mode='constant', 
                                                      constant_values=0)
                         
-                        # Remove debug print
-                        # print(f"Final check - points: {pred_points_flat.shape}, colors: {pred_atom_types.shape}")
                         ax_pred.scatter(pred_points_flat[:, 0], pred_points_flat[:, 1], pred_points_flat[:, 2],
                                     c=pred_atom_types, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
                     else:
                         # If atom colors don't match the points, use a fixed color
                         if len(pred_atom_types) != len(pred_points):
-                            # Remove debug print
-                            # print(f"WARNING: Pred atom colors don't match points - using default coloring")
                             ax_pred.scatter(pred_points[:, 0], pred_points[:, 1], pred_points[:, 2],
                                       c='red', marker='o', s=25, alpha=0.8)
                         else:
                             ax_pred.scatter(pred_points[:, 0], pred_points[:, 1], pred_points[:, 2],
                                       c=pred_atom_types, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
+                else:
+                    ax_pred.scatter(pred_points[:, 0], pred_points[:, 1], pred_points[:, 2],
+                                  c='red', marker='o', s=25, alpha=0.8)
                 
-                style_3d_axes(ax_pred, f'MLP Prediction {i+1}')
+                style_3d_axes(ax_pred, f'Original Prediction {i+1}')
+                
+                # Aligned Prediction (3rd column)
+                ax_aligned = fig.add_subplot(2, 3, i*3+3, projection='3d')
+                
+                try:
+                    aligned_structure = all_aligned_samples[i]
+                    
+                    # Get the aligned coordinates from the result
+                    aligned_points = aligned_structure['aligned_pred_coords'][0]  # Get the first batch element
+                    
+                    # Ensure aligned_points is in the right format for plotting
+                    if aligned_points.ndim == 3:  # [batch, n_atoms, 3]
+                        aligned_points = aligned_points[0]  # Get first batch element if batched
+                    
+                    # IMPORTANT: Use the same atom types from the original prediction for coloring
+                    # This ensures the aligned visualization matches the color scheme of the original
+                    if i < len(all_sample_atom_types) and num_atom_types > 0:
+                        # Use the same atom types as used for the original prediction
+                        aligned_atom_types = all_sample_atom_types[i].numpy() 
+                        
+                        # Reshape atom types to match the aligned points
+                        if aligned_atom_types.ndim == 1 and len(aligned_atom_types) == 1:
+                            # Case where we have a single atom type value for all atoms
+                            # Expand it to match the number of points
+                            aligned_atom_types = np.full(len(aligned_points), aligned_atom_types[0])
+                        elif aligned_atom_types.ndim > 1:
+                            # Flatten multi-dimensional atom types
+                            aligned_atom_types = aligned_atom_types.flatten()
+                            
+                            # If still not the right length, reshape by repeating or truncating
+                            if len(aligned_atom_types) != len(aligned_points):
+                                if len(aligned_atom_types) < len(aligned_points):
+                                    # Repeat pattern to fill
+                                    repeats = int(np.ceil(len(aligned_points) / len(aligned_atom_types)))
+                                    aligned_atom_types = np.tile(aligned_atom_types, repeats)[:len(aligned_points)]
+                                else:
+                                    # Truncate
+                                    aligned_atom_types = aligned_atom_types[:len(aligned_points)]
+                        
+                        # If atom colors still don't match the points, use a fixed color
+                        if len(aligned_atom_types) != len(aligned_points):
+                            print(f"Shape mismatch after reshaping: atom_types: {aligned_atom_types.shape}, points: {aligned_points.shape}")
+                            ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                          c='green', marker='o', s=25, alpha=0.8)
+                        else:
+                            ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                          c=aligned_atom_types, cmap=cmap, norm=norm, marker='o', s=25, alpha=0.8)
+                    else:
+                        ax_aligned.scatter(aligned_points[:, 0], aligned_points[:, 1], aligned_points[:, 2],
+                                      c='green', marker='o', s=25, alpha=0.8)
+                except Exception as e:
+                    print(f"Error visualizing aligned structure: {e}")
+                    # Add a text annotation explaining the error
+                    ax_aligned.text(0, 0, 0, "Alignment Error", fontsize=12)
+                
+                style_3d_axes(ax_aligned, f'Aligned Prediction {i+1}')
             
             # Adjust layout for better spacing
             plt.subplots_adjust(wspace=0.3, hspace=0.3, left=0.15)
@@ -1073,12 +1147,14 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
     if test_dataset is not None:
         model.load_state_dict(torch.load(os.path.join(samples_dir, "mlp_model.pt")))
         test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
-        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
+        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
         
         # Store test metrics for CSV reporting
         test_result_metrics = {
             'test_mae': test_metrics['mae'],
             'test_hausdorff': test_metrics['hausdorff'],
+            'test_optimized_mae': test_metrics['optimized_mae'],
+            'test_optimized_typed_mae': test_metrics['optimized_typed_mae'],
             'test_atom_type_accuracy': test_metrics['atom_type_accuracy']
         }
     

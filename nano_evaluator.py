@@ -4,51 +4,6 @@ from scipy.optimize import linear_sum_assignment
 from typing import Dict, List, Tuple, Optional
 from benchmark_tasks_utils import position_MAE
 
-def convert_image_to_atom_list(self, coord_image: torch.Tensor, type_image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Convert image format (where each pixel is an atom) to atom list format
-        
-        Args:
-            coord_image: (batch, 3, height, width) - coordinates at each pixel
-            type_image: (batch, num_types, height, width) - type logits at each pixel
-            
-        Returns:
-            coords: (batch, height*width, 3) - atom coordinates
-            types: (batch, height*width, num_types) - atom type logits
-        """
-        batch_size, _, height, width = coord_image.shape
-        num_atoms = height * width
-        
-        # Reshape coordinates: (batch, 3, h, w) -> (batch, h*w, 3)
-        coords = coord_image.permute(0, 2, 3, 1).reshape(batch_size, num_atoms, 3)
-        
-        # Reshape types: (batch, num_types, h, w) -> (batch, h*w, num_types)
-        types = type_image.permute(0, 2, 3, 1).reshape(batch_size, num_atoms, -1)
-        
-        return coords, types
-    
-def evaluate_diffusion_format(self, pred_coord_images: torch.Tensor, true_coord_images: torch.Tensor,
-                                pred_type_images: torch.Tensor, true_type_images: torch.Tensor,
-                                type_mismatch_penalty: float = 20.0) -> Dict:
-        """
-        Evaluate diffusion model outputs in image format (each pixel is an atom)
-        
-        Args:
-            pred_coord_images: (batch, 3, height, width) predicted coordinates
-            true_coord_images: (batch, 3, height, width) true coordinates
-            pred_type_images: (batch, num_types, height, width) predicted type logits
-            true_type_images: (batch, num_types, height, width) true type logits
-            type_mismatch_penalty: penalty for type mismatches
-        """
-        # Convert to atom list format
-        pred_coords, pred_types = self.convert_image_to_atom_list(pred_coord_images, pred_type_images)
-        true_coords, true_types = self.convert_image_to_atom_list(true_coord_images, true_type_images)
-        
-        # Run standard evaluation
-        return self.batched_comprehensive_evaluation(
-            pred_coords, true_coords, pred_types, true_types, type_mismatch_penalty
-        )
-
 
 class BatchedNanomaterialEvaluator:
     def __init__(self):
@@ -133,9 +88,7 @@ class BatchedNanomaterialEvaluator:
         """
         Assignment that explicitly handles different atom counts per type
         """
-        # Handle case where pred_types might be logits
-        if pred_types.dim() > 1:  # If pred_types has shape [n_atoms, n_classes]
-            pred_types = torch.argmax(pred_types, dim=-1)  # Convert to class indices
+
         
         unique_types = torch.unique(torch.cat([pred_types, true_types]))
         
@@ -241,7 +194,7 @@ class BatchedNanomaterialEvaluator:
             'unmatched_atoms': unmatched_atoms,
             'matched_indices': (all_pred_indices, all_true_indices)
         }
-    
+   
     def complete_assignment_with_type_penalties(self, pred_xyz: torch.Tensor, true_xyz: torch.Tensor,
                                               pred_types: torch.Tensor, true_types: torch.Tensor,
                                               type_mismatch_penalty: float = 20.0,
@@ -260,9 +213,6 @@ class BatchedNanomaterialEvaluator:
             align_first: whether to align structures first
         """
         
-        # Handle case where pred_types might be logits
-        if pred_types.dim() > 1:  # If pred_types has shape [n_atoms, n_classes]
-            pred_types = torch.argmax(pred_types, dim=-1)  # Convert to class indices
         
         # Optional alignment first
         if align_first:
@@ -381,10 +331,6 @@ class BatchedNanomaterialEvaluator:
         """
         batch_size = pred_xyz.shape[0]
         batch_results = []
-        
-        # Handle case where pred_types might be logits
-        if pred_types.dim() > 2:  # If pred_types has shape [batch_size, n_atoms, n_classes]
-            pred_types = torch.argmax(pred_types, dim=-1)  # Convert to class indices
         
         for i in range(batch_size):
             result = self.complete_assignment_with_type_penalties(
@@ -551,56 +497,46 @@ class BatchedNanomaterialEvaluator:
         
         return results
 
-def quick_batch_metric(pred_batch: torch.Tensor, true_batch: torch.Tensor,
-                     input_format: str = 'auto') -> float:
+def quick_batch_metric(pred_batch: torch.Tensor, true_batch: torch.Tensor) -> float:
     """
     Get single metric for batch evaluation (mean aligned distance)
     """
     evaluator = BatchedNanomaterialEvaluator()
-    
-    # Handle different formats
-    if input_format == 'auto':
-        input_format = 'images' if pred_batch.dim() == 4 else 'atoms'
-    
-    if input_format == 'images':
-        # Convert to atom format
-        pred_coords, _ = evaluator.convert_image_to_atom_list(pred_batch, pred_batch)  # Use coords as dummy types
-        true_coords, _ = evaluator.convert_image_to_atom_list(true_batch, true_batch)
-        results = evaluator.batched_optimal_assignment_distance(pred_coords, true_coords)
-    else:
-        results = evaluator.batched_optimal_assignment_distance(pred_batch, true_batch)
+
+    results = evaluator.batched_optimal_assignment_distance(pred_batch, true_batch)
     
     return results['batch_mean']
-def evaluate_diffusion_batch(pred_batch: torch.Tensor, true_batch: torch.Tensor,
-                           pred_types: Optional[torch.Tensor] = None,
-                           true_types: Optional[torch.Tensor] = None,
-                           input_format: str = 'auto') -> Dict:
+
+def get_best_alignment_for_visualization(pred_batch: torch.Tensor, true_batch: torch.Tensor) -> Dict:
     """
-    Quick evaluation for a batch of generated structures
+    Get the best alignment between predicted and true structures for visualization purposes.
+    Only performs rotation and alignment without atom matching.
     
     Args:
-        pred_batch: predicted data
-        true_batch: true data  
-        pred_types: predicted atom types (optional)
-        true_types: true atom types (optional)
-        input_format: 'atoms', 'images', or 'auto' to detect automatically
+        pred_batch: (batch_size, n_atoms, 3) predicted coordinates
+        true_batch: (batch_size, n_atoms, 3) true coordinates
+        pred_types: (batch_size, n_atoms) or (batch_size, n_atoms, n_classes) predicted atom types
+        true_types: (batch_size, n_atoms) true atom types
+        
+    Returns:
+        Dictionary containing:
+        - aligned_pred_coords: Aligned predicted coordinates
+        - true_coords: True coordinates
+        - pred_types: Types of predicted atoms (processed)
+        - true_types: Types of true atoms
     """
     evaluator = BatchedNanomaterialEvaluator()
+
     
-    # Auto-detect format if not specified
-    if input_format == 'auto':
-        # Check dimensions to determine format
-        if pred_batch.dim() == 4:  # (batch, channels, height, width)
-            input_format = 'images'
-        elif pred_batch.dim() == 3:  # (batch, atoms, features)
-            input_format = 'atoms'
-        else:
-            raise ValueError(f"Cannot auto-detect format for tensor with {pred_batch.dim()} dimensions")
+    # Align structures using Kabsch algorithm
+    aligned_pred = evaluator.batched_kabsch_align(pred_batch, true_batch)
     
-    if input_format == 'images':
-        return evaluator.evaluate_diffusion_format(pred_batch, true_batch, pred_types, true_types)
-    else:
-        return evaluator.batched_comprehensive_evaluation(pred_batch, true_batch, pred_types, true_types)
+    return {
+        'aligned_pred_coords': aligned_pred,
+        'true_coords': true_batch,
+    }
+
+
 
 def quick_batch_metric_with_types(pred_batch: torch.Tensor, true_batch: torch.Tensor,
                                 pred_types: torch.Tensor, true_types: torch.Tensor,
@@ -610,63 +546,20 @@ def quick_batch_metric_with_types(pred_batch: torch.Tensor, true_batch: torch.Te
     """
     evaluator = BatchedNanomaterialEvaluator()
     
-    # Auto-detect format if not specified
-    if input_format == 'auto':
-        if pred_batch.dim() == 4:  # (batch, channels, height, width)
-            input_format = 'images'
-        elif pred_batch.dim() == 3:  # (batch, atoms, features)
-            input_format = 'atoms'
-        else:
-            raise ValueError(f"Cannot auto-detect format for tensor with {pred_batch.dim()} dimensions")
     
     if input_format == 'images':
-        # Convert image format to atom list format
-        pred_coords, pred_types_converted = evaluator.convert_image_to_atom_list(pred_batch, pred_types)
-        true_coords, true_types_converted = evaluator.convert_image_to_atom_list(true_batch, true_types)
-        
         # Use the converted data
         results = evaluator.batched_complete_assignment_with_type_penalties(
-            pred_coords, true_coords, pred_types_converted, true_types_converted
+            pred_batch, true_batch, pred_types, true_types
         )
     else:
         # Use data as-is for atom list format
+        prediction_types = torch.argmax(pred_types, dim=-1)
         results = evaluator.batched_complete_assignment_with_type_penalties(
-            pred_batch, true_batch, pred_types, true_types
+            pred_batch, true_batch, prediction_types, true_types
         )
     
     return {
         'mean_distance': results['batch_mean_distance'],
         'type_accuracy': results['batch_type_accuracy']
     }
-
-# Example usage:
-if __name__ == "__main__":
-    # Example with batch of structures
-    batch_size = 16
-    n_atoms = 50
-    n_types = 5  # e.g., C, O, N, H, S
-    
-    # Simulate batch data
-    pred_batch = torch.randn(batch_size, n_atoms, 3, device='cuda')
-    true_batch = torch.randn(batch_size, n_atoms, 3, device='cuda')
-    pred_types = torch.randint(0, n_types, (batch_size, n_atoms), device='cuda')
-    true_types = torch.randint(0, n_types, (batch_size, n_atoms), device='cuda')
-    
-    # Full evaluation
-    evaluator = BatchedNanomaterialEvaluator()
-    results = evaluator.batched_comprehensive_evaluation(pred_batch, true_batch, pred_types, true_types)
-    
-    print("Batch Evaluation Results:")
-    print(f"Mean aligned distance across batch: {results['aligned_assignment']['batch_mean']:.4f}")
-    print(f"Type-aware aligned distance: {results['type_aware_assignment']['batch_mean_distance']:.4f}")
-    print(f"Type accuracy: {results['type_aware_assignment']['batch_type_accuracy']:.4f}")
-    print(f"Position MAE: {results['position_mae']['batch_mean']:.4f}")
-    
-    # Quick single metric
-    quick_metric = quick_batch_metric(pred_batch, true_batch)
-    print(f"Quick batch metric: {quick_metric:.4f}")
-    
-    # Quick metric with types
-    quick_type_metric = quick_batch_metric_with_types(pred_batch, true_batch, pred_types, true_types)
-    print(f"Quick batch metric with types: {quick_type_metric['mean_distance']:.4f}")
-    print(f"Type accuracy: {quick_type_metric['type_accuracy']:.4f}")
