@@ -1,4 +1,4 @@
-# Configuration file for MLP baseline model on xPDF task with lower learning rate
+# Configuration file for MLP baseline model on XRD task with fractional positions and higher learning rate
 model: "MLP"
 task: "FracPositionRegressionXRD"
 
@@ -14,15 +14,18 @@ output_dir: "mlp_results"
 
 # Model configuration
 Model_config:
-  in_channels: 580      # Dimensionality of xPDF data
+  in_channels: 580       # Dimensionality of XRD data
   hidden_dim: 512        # Hidden layer dimension
   num_layers: 3          # Number of hidden layers
   dropout: 0.1           # Dropout probability
+  atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_frac" # Fractional positions
+  cond_type: "xrd"       # Conditioning type
 
 # Training parameters
 Train_config:
   batch_size: 32
-  learning_rate: 0.0005
+  learning_rate: 0.005
   weight_decay: 0.0001
   epochs: 200
   max_patience: 20       # Early stopping patience

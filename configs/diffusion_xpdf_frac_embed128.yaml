@@ -1,4 +1,4 @@
-# Configuration file for VectorDiffusion model on xPDF task with fractional positions and larger embedding
+# Configuration file for VectorDiffusion model on xPDF task with fractional positions and medium embedding
 model: "Diffusion"
 task: "FracPositionRegressionXPDF"
 
@@ -21,6 +21,7 @@ Model_config:
   cond_embed_dim: 128    # Embedding dimension for conditioning
   image_size: [10, 10]   # Image size (height, width)
   cond_type: "xPDF"      # Conditioning type
+  atom_mapping_path: 'atom_type_mapping.json'
 
 # Training parameters
 Train_config:
@@ -29,5 +30,4 @@ Train_config:
   epochs: 100
   ema: true              # Use Exponential Moving Average
   seed: 42
-  num_workers: 0
-  reporter_save_frequency: 10  # Generate images every 10 epochs 
+  num_workers: 0 

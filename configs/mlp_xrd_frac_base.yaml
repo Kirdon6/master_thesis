@@ -1,4 +1,4 @@
-# Configuration file for MLP baseline model on xPDF task
+# Configuration file for MLP baseline model on XRD task with fractional positions
 model: "MLP"
 task: "FracPositionRegressionXRD"
 
@@ -14,10 +14,13 @@ output_dir: "mlp_results"
 
 # Model configuration
 Model_config:
-  in_channels: 580      # Dimensionality of xPDF data
+  in_channels: 580       # Dimensionality of XRD data
   hidden_dim: 512        # Hidden layer dimension
   num_layers: 3          # Number of hidden layers
   dropout: 0.1           # Dropout probability
+  atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_frac" # Fractional positions
+  cond_type: "xrd"       # Conditioning type
 
 # Training parameters
 Train_config:

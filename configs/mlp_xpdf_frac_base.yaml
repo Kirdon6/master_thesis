@@ -1,4 +1,4 @@
-# Configuration file for MLP baseline model on xPDF task
+# Configuration file for MLP baseline model on xPDF task with fractional positions
 model: "MLP"
 task: "FracPositionRegressionXPDF"
 
@@ -18,10 +18,9 @@ Model_config:
   hidden_dim: 512        # Hidden layer dimension
   num_layers: 3          # Number of hidden layers
   dropout: 0.1           # Dropout probability
-  atom_mapping_path: "atom_type_mapping.json"
-  cond_type: "xPDF"
-  sample_dir: "mlp_samples"
-  model_type: "pos_frac"
+  atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_frac" # Fractional positions
+  cond_type: "xPDF"      # Conditioning type
 
 # Training parameters
 Train_config:
@@ -29,6 +28,7 @@ Train_config:
   learning_rate: 0.001
   weight_decay: 0.0001
   epochs: 200
+  max_patience: 20       # Early stopping patience
   seed: 42
   num_workers: 0
   lr_scheduler: true
