@@ -42,4 +42,4 @@ wandb_config:
   mode: "online"
   entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
   name: "structure-prediction"  # Run name (will be auto-generated if null)
-  tags: ["mlp", "xRD", "CHILI"] 
+  tags: ["mlp", "xrd", "CHILI"] 

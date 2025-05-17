@@ -27,7 +27,7 @@ Model_config:
 Train_config:
   batch_size: 64
   learning_rate: 0.0001
-  epochs: 100
+  epochs: 300
   ema: true              # Use Exponential Moving Average
   seed: 42
   num_workers: 0 
@@ -39,4 +39,4 @@ wandb_config:
   mode: "online"
   entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
   name: "structure-prediction"  # Run name (will be auto-generated if null)
-  tags: ["diffusion", "xRD", "CHILI"] 
+  tags: ["diffusion", "xrd", "CHILI"] 
