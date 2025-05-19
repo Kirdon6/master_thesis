@@ -150,13 +150,7 @@ def run_experiment(config_path, use_multi_gpu=False):
     device = torch.device(device_type)
     logger.info(f"Using device: {device}")
     
-    # Check for multi-GPU support
-    if use_multi_gpu and torch.cuda.is_available():
-        num_gpus = torch.cuda.device_count()
-        if num_gpus > 1:
-            logger.info(f"Multi-GPU mode enabled with {num_gpus} GPUs")
-        else:
-            logger.info(f"Multi-GPU mode requested but only {num_gpus} GPU available")
+
     
     # Set random seed for reproducibility
     # Get seed from config based on model type
