@@ -1,0 +1,45 @@
+# Configuration file for MLP baseline model on xPDF task with larger hidden dimension
+model: "MLP"
+task: "AbsPositionRegressionXRD"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "mlp_results"
+
+# Model configuration
+Model_config:
+  in_channels: 580      # Dimensionality of xPDF data
+  hidden_dim: 1024       # Hidden layer dimension
+  num_layers: 3          # Number of hidden layers
+  dropout: 0.1           # Dropout probability
+  atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_abs"  # Absolute positions
+  cond_type: "xrd"       # Conditioning type
+
+# Training parameters
+Train_config:
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  epochs: 200
+  max_patience: 20       # Early stopping patience
+  seed: 42
+  num_workers: 0
+  lr_scheduler: true
+  lr_step_size: 30
+  lr_gamma: 0.5 
+
+# Weights & Biases configuration
+use_wandb: true
+wandb_config:
+  project: "cluster-structure-prediction"
+  mode: "online"
+  entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
+  name: "structure-prediction"  # Run name (will be auto-generated if null)
+  tags: ["mlp", "xrd", "CHILI"] 

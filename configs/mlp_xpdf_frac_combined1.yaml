@@ -1,0 +1,45 @@
+# Configuration file for MLP with optimized parameters - larger model variant
+model: "MLP"
+task: "FracPositionRegressionXPDF"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "mlp_results"
+
+# Model configuration
+Model_config:
+  in_channels: 6000      # Dimensionality of xPDF data
+  hidden_dim: 1024       # Larger hidden layer dimension
+  num_layers: 4          # More hidden layers
+  dropout: 0.15          # Moderate dropout
+  atom_mapping_path: 'atom_type_mapping.json'
+  model_type: "pos_frac" # Fractional positions
+  cond_type: "xPDF"      # Conditioning type
+
+# Training parameters
+Train_config:
+  batch_size: 48         # Slightly larger batch size
+  learning_rate: 0.0008  # Adjusted learning rate
+  weight_decay: 0.00015  # Slightly stronger regularization
+  epochs: 250            # More epochs
+  max_patience: 25       # More patience
+  seed: 42
+  num_workers: 0
+  lr_scheduler: true
+  lr_step_size: 40       # Larger step size
+  lr_gamma: 0.6          # Less aggressive decay 
+
+# Weights & Biases configuration
+use_wandb: true
+wandb_config:
+  project: "cluster-structure-prediction"
+  mode: "online"
+  entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
+  name: "structure-prediction"  # Run name (will be auto-generated if null)
+  tags: ["mlp", "xPDF", "CHILI"] 

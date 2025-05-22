@@ -1,0 +1,42 @@
+# Configuration file for VectorDiffusion model on xPDF task with fractional positions and lower learning rate
+model: "Diffusion"
+task: "FracPositionRegressionXPDF"
+
+# Dataset information
+dataset:
+  root: "data"
+  name: "CHILI-3K"
+  graph_type: "central"
+
+# Output and logging settings
+log_dir: "logs"
+output_dir: "diffusion_results"
+generate_samples: true
+
+# Model parameters
+Model_config:
+  model_type: "pos_frac"  # Fractional positions
+  T: 100                 # Number of diffusion steps
+  cond_dim: 6000         # Dimensionality of xPDF data
+  cond_embed_dim: 64     # Embedding dimension for conditioning
+  image_size: [10, 10]   # Image size (height, width)
+  cond_type: "xPDF"      # Conditioning type
+  atom_mapping_path: 'atom_type_mapping.json'
+
+# Training parameters
+Train_config:
+  batch_size: 64
+  learning_rate: 0.00005
+  epochs: 100
+  ema: true              # Use Exponential Moving Average
+  seed: 42
+  num_workers: 0 
+
+# Weights & Biases configuration
+use_wandb: true
+wandb_config:
+  project: "cluster-structure-prediction"
+  mode: "online"
+  entity: "kirdon6-university-of-copenhagen"  # Your wandb username or team name (null for default)
+  name: "structure-prediction"  # Run name (will be auto-generated if null)
+  tags: ["diffusion", "xPDF", "CHILI"] 
