@@ -471,6 +471,10 @@ class DDPM(nn.Module):
             alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
             betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
             
+            # Pad with a small value at the beginning to make it T+1 elements
+            # This ensures we have indices 0 to T, matching the original linear schedule
+            betas = torch.cat([torch.tensor([beta_1]), betas])
+            
             # Clamp to ensure beta values are in reasonable range
             return torch.clamp(betas, min=beta_1, max=beta_T)
 
