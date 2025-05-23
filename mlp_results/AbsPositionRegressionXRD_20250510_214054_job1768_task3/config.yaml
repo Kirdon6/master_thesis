@@ -1,0 +1,25 @@
+Model_config:
+  atom_mapping_path: atom_type_mapping.json
+  dropout: 0.1
+  hidden_dim: 512
+  in_channels: 6000
+  num_layers: 3
+Train_config:
+  batch_size: 32
+  epochs: 200
+  learning_rate: 0.001
+  lr_gamma: 0.5
+  lr_scheduler: true
+  lr_step_size: 30
+  max_patience: 20
+  num_workers: 0
+  seed: 42
+  weight_decay: 0.0001
+dataset:
+  graph_type: central
+  name: CHILI-3K
+  root: data
+log_dir: logs
+model: MLP
+output_dir: mlp_results
+task: AbsPositionRegressionXRD

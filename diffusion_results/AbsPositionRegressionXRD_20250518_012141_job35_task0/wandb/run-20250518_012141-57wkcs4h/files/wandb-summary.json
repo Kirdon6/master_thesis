@@ -1,0 +1,1 @@
+{"dataset/train_samples":2013,"_timestamp":1.7475241123599658e+09,"_runtime":10.631458231,"system/num_gpus":1,"_wandb":{"runtime":10},"error":"mat1 and mat2 shapes cannot be multiplied (64x580 and 6000x512)","dataset/test_samples":252,"dataset/val_samples":252,"_step":1,"model/parameters":7220409,"system/device":"cuda"}

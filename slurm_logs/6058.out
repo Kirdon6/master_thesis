@@ -1,0 +1,659 @@
+Slurm assigned GPUs: 0,2,3,4
+Set CUDA_VISIBLE_DEVICES=0,1,2,3
+Job ID: 6058
+Node: hendrixgpu20fl
+# CPUs: 4
+Wed May 14 21:56:24 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.86.15              Driver Version: 570.86.15      CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA TITAN RTX               Off |   00000000:1A:00.0 Off |                  N/A |
+| 41%   30C    P8             26W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA TITAN RTX               Off |   00000000:3D:00.0 Off |                  N/A |
+| 41%   27C    P8             14W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA TITAN RTX               Off |   00000000:3E:00.0 Off |                  N/A |
+| 41%   29C    P8             30W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   3  NVIDIA TITAN RTX               Off |   00000000:88:00.0 Off |                  N/A |
+| 41%   28C    P8             23W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Using config file: configs/diffusion_xpdf_frac_base.yaml
+Running experiment with model type: Diffusion
+Loaded atom mapping with 54 categories for visualization
+Loaded atom mapping with 54 categories
+Created dataset with 2013 samples, image shape: torch.Size([2013, 3, 10, 10]), conditioning shape: torch.Size([2013, 6000])
+Atom types shape: torch.Size([2013, 1, 10, 10]), with 54 categories
+Loaded atom mapping with 54 categories
+Created dataset with 252 samples, image shape: torch.Size([252, 3, 10, 10]), conditioning shape: torch.Size([252, 6000])
+Atom types shape: torch.Size([252, 1, 10, 10]), with 54 categories
+Loaded atom mapping with 54 categories
+Created dataset with 252 samples, image shape: torch.Size([252, 3, 10, 10]), conditioning shape: torch.Size([252, 6000])
+Atom types shape: torch.Size([252, 1, 10, 10]), with 54 categories
+Using device: cuda:0
+
+Epoch 1/100 - Train Loss: 5.501506, 
+                Val MAE: 3.105932, Val Optimized MAE: 1.749812, 
+                Val Optimized Typed MAE: 18.055568,
+                Val Hausdorff: 4.808965,
+                Atom Type Acc: 10.75%
+
+Epoch 2/100 - Train Loss: 4.528393, 
+                Val MAE: 2.686955, Val Optimized MAE: 1.338783, 
+                Val Optimized Typed MAE: 14.603536,
+                Val Hausdorff: 4.048065,
+                Atom Type Acc: 20.71%
+
+Epoch 3/100 - Train Loss: 4.422076, 
+                Val MAE: 2.271554, Val Optimized MAE: 0.965191, 
+                Val Optimized Typed MAE: 12.442474,
+                Val Hausdorff: 3.152930,
+                Atom Type Acc: 27.05%
+
+Epoch 4/100 - Train Loss: 4.354504, 
+                Val MAE: 2.088857, Val Optimized MAE: 0.828528, 
+                Val Optimized Typed MAE: 13.210526,
+                Val Hausdorff: 2.853575,
+                Atom Type Acc: 25.25%
+
+Epoch 5/100 - Train Loss: 4.319560, 
+                Val MAE: 2.012463, Val Optimized MAE: 0.779795, 
+                Val Optimized Typed MAE: 11.714657,
+                Val Hausdorff: 2.691617,
+                Atom Type Acc: 30.38%
+
+Epoch 6/100 - Train Loss: 4.282934, 
+                Val MAE: 1.931920, Val Optimized MAE: 0.736702, 
+                Val Optimized Typed MAE: 12.248664,
+                Val Hausdorff: 2.532903,
+                Atom Type Acc: 29.02%
+
+Epoch 7/100 - Train Loss: 4.250851, 
+                Val MAE: 1.877273, Val Optimized MAE: 0.705977, 
+                Val Optimized Typed MAE: 11.978742,
+                Val Hausdorff: 2.461576,
+                Atom Type Acc: 30.49%
+
+Epoch 8/100 - Train Loss: 4.210940, 
+                Val MAE: 1.858522, Val Optimized MAE: 0.708620, 
+                Val Optimized Typed MAE: 13.924583,
+                Val Hausdorff: 2.471067,
+                Atom Type Acc: 24.64%
+
+Epoch 9/100 - Train Loss: 4.150103, 
+                Val MAE: 1.855098, Val Optimized MAE: 0.703113, 
+                Val Optimized Typed MAE: 15.600592,
+                Val Hausdorff: 2.290099,
+                Atom Type Acc: 18.67%
+
+Epoch 10/100 - Train Loss: 4.075956, 
+                Val MAE: 1.878520, Val Optimized MAE: 0.715835, 
+                Val Optimized Typed MAE: 14.851974,
+                Val Hausdorff: 2.436059,
+                Atom Type Acc: 21.42%
+
+Epoch 11/100 - Train Loss: 4.041881, 
+                Val MAE: 1.848454, Val Optimized MAE: 0.715641, 
+                Val Optimized Typed MAE: 15.214632,
+                Val Hausdorff: 2.385818,
+                Atom Type Acc: 20.46%
+
+Epoch 12/100 - Train Loss: 3.988753, 
+                Val MAE: 1.861308, Val Optimized MAE: 0.714958, 
+                Val Optimized Typed MAE: 15.147165,
+                Val Hausdorff: 2.403665,
+                Atom Type Acc: 20.87%
+
+Epoch 13/100 - Train Loss: 3.986164, 
+                Val MAE: 1.849732, Val Optimized MAE: 0.699591, 
+                Val Optimized Typed MAE: 14.756640,
+                Val Hausdorff: 2.334993,
+                Atom Type Acc: 22.18%
+
+Epoch 14/100 - Train Loss: 3.933076, 
+                Val MAE: 1.809377, Val Optimized MAE: 0.707678, 
+                Val Optimized Typed MAE: 15.346117,
+                Val Hausdorff: 2.302876,
+                Atom Type Acc: 20.02%
+
+Epoch 15/100 - Train Loss: 3.892347, 
+                Val MAE: 1.839857, Val Optimized MAE: 0.708528, 
+                Val Optimized Typed MAE: 15.254933,
+                Val Hausdorff: 2.402553,
+                Atom Type Acc: 20.52%
+
+Epoch 16/100 - Train Loss: 3.856478, 
+                Val MAE: 1.813473, Val Optimized MAE: 0.707768, 
+                Val Optimized Typed MAE: 15.866007,
+                Val Hausdorff: 2.253352,
+                Atom Type Acc: 18.61%
+
+Epoch 17/100 - Train Loss: 3.851367, 
+                Val MAE: 1.848873, Val Optimized MAE: 0.709935, 
+                Val Optimized Typed MAE: 15.399907,
+                Val Hausdorff: 2.373368,
+                Atom Type Acc: 20.00%
+
+Epoch 18/100 - Train Loss: 3.814986, 
+                Val MAE: 1.847549, Val Optimized MAE: 0.728349, 
+                Val Optimized Typed MAE: 15.968173,
+                Val Hausdorff: 2.379677,
+                Atom Type Acc: 18.33%
+
+Epoch 19/100 - Train Loss: 3.845706, 
+                Val MAE: 1.788535, Val Optimized MAE: 0.709290, 
+                Val Optimized Typed MAE: 15.735614,
+                Val Hausdorff: 2.250368,
+                Atom Type Acc: 19.46%
+
+Epoch 20/100 - Train Loss: 3.769606, 
+                Val MAE: 1.813584, Val Optimized MAE: 0.700888, 
+                Val Optimized Typed MAE: 15.874919,
+                Val Hausdorff: 2.238095,
+                Atom Type Acc: 19.36%
+
+Epoch 21/100 - Train Loss: 3.724213, 
+                Val MAE: 1.801956, Val Optimized MAE: 0.702561, 
+                Val Optimized Typed MAE: 16.247260,
+                Val Hausdorff: 2.216095,
+                Atom Type Acc: 17.88%
+
+Epoch 22/100 - Train Loss: 3.689084, 
+                Val MAE: 1.807516, Val Optimized MAE: 0.702120, 
+                Val Optimized Typed MAE: 16.276644,
+                Val Hausdorff: 2.194918,
+                Atom Type Acc: 17.36%
+
+Epoch 23/100 - Train Loss: 3.618524, 
+                Val MAE: 1.789084, Val Optimized MAE: 0.701439, 
+                Val Optimized Typed MAE: 16.274502,
+                Val Hausdorff: 2.182041,
+                Atom Type Acc: 17.77%
+
+Epoch 24/100 - Train Loss: 3.568793, 
+                Val MAE: 1.846151, Val Optimized MAE: 0.712469, 
+                Val Optimized Typed MAE: 17.132127,
+                Val Hausdorff: 2.332745,
+                Atom Type Acc: 14.43%
+
+Epoch 25/100 - Train Loss: 3.513279, 
+                Val MAE: 1.831589, Val Optimized MAE: 0.711369, 
+                Val Optimized Typed MAE: 16.814508,
+                Val Hausdorff: 2.273327,
+                Atom Type Acc: 15.59%
+
+Epoch 26/100 - Train Loss: 3.464425, 
+                Val MAE: 1.842653, Val Optimized MAE: 0.716186, 
+                Val Optimized Typed MAE: 17.219333,
+                Val Hausdorff: 2.326168,
+                Atom Type Acc: 14.03%
+
+Epoch 27/100 - Train Loss: 3.398423, 
+                Val MAE: 1.821375, Val Optimized MAE: 0.703867, 
+                Val Optimized Typed MAE: 16.644971,
+                Val Hausdorff: 2.246282,
+                Atom Type Acc: 16.43%
+
+Epoch 28/100 - Train Loss: 3.326022, 
+                Val MAE: 1.810618, Val Optimized MAE: 0.702352, 
+                Val Optimized Typed MAE: 17.214215,
+                Val Hausdorff: 2.221814,
+                Atom Type Acc: 14.06%
+
+Epoch 29/100 - Train Loss: 3.295531, 
+                Val MAE: 1.817706, Val Optimized MAE: 0.702249, 
+                Val Optimized Typed MAE: 17.016541,
+                Val Hausdorff: 2.166692,
+                Atom Type Acc: 15.19%
+
+Epoch 30/100 - Train Loss: 3.282426, 
+                Val MAE: 1.858904, Val Optimized MAE: 0.717870, 
+                Val Optimized Typed MAE: 17.482646,
+                Val Hausdorff: 2.276953,
+                Atom Type Acc: 12.96%
+
+Epoch 31/100 - Train Loss: 3.208455, 
+                Val MAE: 1.851909, Val Optimized MAE: 0.710346, 
+                Val Optimized Typed MAE: 16.990577,
+                Val Hausdorff: 2.251694,
+                Atom Type Acc: 15.10%
+
+Epoch 32/100 - Train Loss: 3.165832, 
+                Val MAE: 1.827156, Val Optimized MAE: 0.701263, 
+                Val Optimized Typed MAE: 16.860428,
+                Val Hausdorff: 2.169853,
+                Atom Type Acc: 15.15%
+
+Epoch 33/100 - Train Loss: 3.094258, 
+                Val MAE: 1.850479, Val Optimized MAE: 0.703772, 
+                Val Optimized Typed MAE: 16.734840,
+                Val Hausdorff: 2.261040,
+                Atom Type Acc: 15.46%
+
+Epoch 34/100 - Train Loss: 3.040804, 
+                Val MAE: 1.818493, Val Optimized MAE: 0.699434, 
+                Val Optimized Typed MAE: 17.315978,
+                Val Hausdorff: 2.192442,
+                Atom Type Acc: 13.20%
+
+Epoch 35/100 - Train Loss: 3.019156, 
+                Val MAE: 1.844757, Val Optimized MAE: 0.711146, 
+                Val Optimized Typed MAE: 17.332664,
+                Val Hausdorff: 2.262756,
+                Atom Type Acc: 13.48%
+
+Epoch 36/100 - Train Loss: 2.999085, 
+                Val MAE: 1.856879, Val Optimized MAE: 0.714875, 
+                Val Optimized Typed MAE: 17.904087,
+                Val Hausdorff: 2.240572,
+                Atom Type Acc: 11.35%
+
+Epoch 37/100 - Train Loss: 2.950284, 
+                Val MAE: 1.838236, Val Optimized MAE: 0.702825, 
+                Val Optimized Typed MAE: 16.912210,
+                Val Hausdorff: 2.217926,
+                Atom Type Acc: 15.19%
+
+Epoch 38/100 - Train Loss: 2.887511, 
+                Val MAE: 1.811671, Val Optimized MAE: 0.691207, 
+                Val Optimized Typed MAE: 17.345752,
+                Val Hausdorff: 2.206379,
+                Atom Type Acc: 13.33%
+
+Epoch 39/100 - Train Loss: 2.842203, 
+                Val MAE: 1.835777, Val Optimized MAE: 0.699152, 
+                Val Optimized Typed MAE: 16.858661,
+                Val Hausdorff: 2.177509,
+                Atom Type Acc: 14.92%
+
+Epoch 40/100 - Train Loss: 2.874194, 
+                Val MAE: 1.823233, Val Optimized MAE: 0.694462, 
+                Val Optimized Typed MAE: 17.453762,
+                Val Hausdorff: 2.223981,
+                Atom Type Acc: 13.20%
+
+Epoch 41/100 - Train Loss: 2.761464, 
+                Val MAE: 1.829437, Val Optimized MAE: 0.695653, 
+                Val Optimized Typed MAE: 16.902850,
+                Val Hausdorff: 2.178044,
+                Atom Type Acc: 14.74%
+
+Epoch 42/100 - Train Loss: 2.705817, 
+                Val MAE: 1.789818, Val Optimized MAE: 0.684562, 
+                Val Optimized Typed MAE: 17.013031,
+                Val Hausdorff: 2.074386,
+                Atom Type Acc: 14.90%
+
+Epoch 43/100 - Train Loss: 2.774718, 
+                Val MAE: 1.814684, Val Optimized MAE: 0.682867, 
+                Val Optimized Typed MAE: 17.116090,
+                Val Hausdorff: 2.089515,
+                Atom Type Acc: 14.28%
+
+Epoch 44/100 - Train Loss: 2.672412, 
+                Val MAE: 1.811958, Val Optimized MAE: 0.685327, 
+                Val Optimized Typed MAE: 16.353805,
+                Val Hausdorff: 2.163411,
+                Atom Type Acc: 17.21%
+
+Epoch 45/100 - Train Loss: 2.591246, 
+                Val MAE: 1.833066, Val Optimized MAE: 0.690320, 
+                Val Optimized Typed MAE: 16.662341,
+                Val Hausdorff: 2.166748,
+                Atom Type Acc: 16.23%
+
+Epoch 46/100 - Train Loss: 2.567941, 
+                Val MAE: 1.833151, Val Optimized MAE: 0.691692, 
+                Val Optimized Typed MAE: 16.412050,
+                Val Hausdorff: 2.165063,
+                Atom Type Acc: 17.25%
+
+Epoch 47/100 - Train Loss: 2.557069, 
+                Val MAE: 1.834082, Val Optimized MAE: 0.694300, 
+                Val Optimized Typed MAE: 16.689923,
+                Val Hausdorff: 2.180691,
+                Atom Type Acc: 16.37%
+
+Epoch 48/100 - Train Loss: 2.486140, 
+                Val MAE: 1.800112, Val Optimized MAE: 0.689338, 
+                Val Optimized Typed MAE: 16.790401,
+                Val Hausdorff: 2.163087,
+                Atom Type Acc: 15.60%
+
+Epoch 49/100 - Train Loss: 2.496266, 
+                Val MAE: 1.807269, Val Optimized MAE: 0.690117, 
+                Val Optimized Typed MAE: 16.578523,
+                Val Hausdorff: 2.153886,
+                Atom Type Acc: 16.42%
+
+Epoch 50/100 - Train Loss: 2.435798, 
+                Val MAE: 1.810341, Val Optimized MAE: 0.686893, 
+                Val Optimized Typed MAE: 16.491884,
+                Val Hausdorff: 2.143306,
+                Atom Type Acc: 16.77%
+
+Epoch 51/100 - Train Loss: 2.366581, 
+                Val MAE: 1.846471, Val Optimized MAE: 0.702153, 
+                Val Optimized Typed MAE: 16.420196,
+                Val Hausdorff: 2.195834,
+                Atom Type Acc: 17.29%
+
+Epoch 52/100 - Train Loss: 2.324660, 
+                Val MAE: 1.836626, Val Optimized MAE: 0.698800, 
+                Val Optimized Typed MAE: 16.287016,
+                Val Hausdorff: 2.228277,
+                Atom Type Acc: 18.07%
+
+Epoch 53/100 - Train Loss: 2.316261, 
+                Val MAE: 1.816012, Val Optimized MAE: 0.691423, 
+                Val Optimized Typed MAE: 16.496766,
+                Val Hausdorff: 2.144310,
+                Atom Type Acc: 16.97%
+
+Epoch 54/100 - Train Loss: 2.329719, 
+                Val MAE: 1.809856, Val Optimized MAE: 0.689234, 
+                Val Optimized Typed MAE: 16.101359,
+                Val Hausdorff: 2.154921,
+                Atom Type Acc: 18.41%
+
+Epoch 55/100 - Train Loss: 2.245588, 
+                Val MAE: 1.848465, Val Optimized MAE: 0.692637, 
+                Val Optimized Typed MAE: 16.366628,
+                Val Hausdorff: 2.189470,
+                Atom Type Acc: 18.07%
+
+Epoch 56/100 - Train Loss: 2.201909, 
+                Val MAE: 1.819901, Val Optimized MAE: 0.691058, 
+                Val Optimized Typed MAE: 16.118511,
+                Val Hausdorff: 2.208464,
+                Atom Type Acc: 18.80%
+
+Epoch 57/100 - Train Loss: 2.157692, 
+                Val MAE: 1.817999, Val Optimized MAE: 0.693709, 
+                Val Optimized Typed MAE: 16.207120,
+                Val Hausdorff: 2.218855,
+                Atom Type Acc: 18.62%
+
+Epoch 58/100 - Train Loss: 2.266066, 
+                Val MAE: 1.810945, Val Optimized MAE: 0.684305, 
+                Val Optimized Typed MAE: 16.162637,
+                Val Hausdorff: 2.186961,
+                Atom Type Acc: 18.52%
+
+Epoch 59/100 - Train Loss: 2.102031, 
+                Val MAE: 1.821748, Val Optimized MAE: 0.691157, 
+                Val Optimized Typed MAE: 15.819856,
+                Val Hausdorff: 2.146913,
+                Atom Type Acc: 19.58%
+
+Epoch 60/100 - Train Loss: 2.085887, 
+                Val MAE: 1.839438, Val Optimized MAE: 0.690155, 
+                Val Optimized Typed MAE: 16.419327,
+                Val Hausdorff: 2.224512,
+                Atom Type Acc: 18.46%
+
+Epoch 61/100 - Train Loss: 2.101604, 
+                Val MAE: 1.798411, Val Optimized MAE: 0.685101, 
+                Val Optimized Typed MAE: 16.165474,
+                Val Hausdorff: 2.136799,
+                Atom Type Acc: 19.15%
+
+Epoch 62/100 - Train Loss: 2.078821, 
+                Val MAE: 1.826599, Val Optimized MAE: 0.686236, 
+                Val Optimized Typed MAE: 16.056535,
+                Val Hausdorff: 2.270882,
+                Atom Type Acc: 19.90%
+
+Epoch 63/100 - Train Loss: 1.976573, 
+                Val MAE: 1.826230, Val Optimized MAE: 0.694998, 
+                Val Optimized Typed MAE: 15.170274,
+                Val Hausdorff: 2.159494,
+                Atom Type Acc: 23.89%
+
+Epoch 64/100 - Train Loss: 1.960761, 
+                Val MAE: 1.842337, Val Optimized MAE: 0.693767, 
+                Val Optimized Typed MAE: 15.203416,
+                Val Hausdorff: 2.240861,
+                Atom Type Acc: 23.53%
+
+Epoch 65/100 - Train Loss: 2.016003, 
+                Val MAE: 1.845251, Val Optimized MAE: 0.693892, 
+                Val Optimized Typed MAE: 16.130717,
+                Val Hausdorff: 2.243051,
+                Atom Type Acc: 19.53%
+
+Epoch 66/100 - Train Loss: 1.918928, 
+                Val MAE: 1.828781, Val Optimized MAE: 0.692169, 
+                Val Optimized Typed MAE: 15.553415,
+                Val Hausdorff: 2.226565,
+                Atom Type Acc: 21.82%
+
+Epoch 67/100 - Train Loss: 1.839894, 
+                Val MAE: 1.825728, Val Optimized MAE: 0.690210, 
+                Val Optimized Typed MAE: 15.355031,
+                Val Hausdorff: 2.227803,
+                Atom Type Acc: 22.86%
+
+Epoch 68/100 - Train Loss: 1.893003, 
+                Val MAE: 1.858733, Val Optimized MAE: 0.697733, 
+                Val Optimized Typed MAE: 16.066130,
+                Val Hausdorff: 2.261720,
+                Atom Type Acc: 20.30%
+
+Epoch 69/100 - Train Loss: 1.822146, 
+                Val MAE: 1.842413, Val Optimized MAE: 0.694927, 
+                Val Optimized Typed MAE: 15.515318,
+                Val Hausdorff: 2.250909,
+                Atom Type Acc: 22.15%
+
+Epoch 70/100 - Train Loss: 1.783701, 
+                Val MAE: 1.842998, Val Optimized MAE: 0.693572, 
+                Val Optimized Typed MAE: 14.975197,
+                Val Hausdorff: 2.127362,
+                Atom Type Acc: 25.32%
+
+Epoch 71/100 - Train Loss: 1.768279, 
+                Val MAE: 1.825623, Val Optimized MAE: 0.685137, 
+                Val Optimized Typed MAE: 14.689332,
+                Val Hausdorff: 2.182435,
+                Atom Type Acc: 26.69%
+
+Epoch 72/100 - Train Loss: 1.719906, 
+                Val MAE: 1.845011, Val Optimized MAE: 0.696338, 
+                Val Optimized Typed MAE: 15.823232,
+                Val Hausdorff: 2.185078,
+                Atom Type Acc: 21.66%
+
+Epoch 73/100 - Train Loss: 1.778062, 
+                Val MAE: 1.841684, Val Optimized MAE: 0.690933, 
+                Val Optimized Typed MAE: 14.933116,
+                Val Hausdorff: 2.256380,
+                Atom Type Acc: 25.66%
+
+Epoch 74/100 - Train Loss: 1.806990, 
+                Val MAE: 1.850357, Val Optimized MAE: 0.696061, 
+                Val Optimized Typed MAE: 15.711297,
+                Val Hausdorff: 2.180452,
+                Atom Type Acc: 22.33%
+
+Epoch 75/100 - Train Loss: 1.821788, 
+                Val MAE: 1.813139, Val Optimized MAE: 0.681778, 
+                Val Optimized Typed MAE: 14.950997,
+                Val Hausdorff: 2.176024,
+                Atom Type Acc: 24.94%
+
+Epoch 76/100 - Train Loss: 1.639465, 
+                Val MAE: 1.817108, Val Optimized MAE: 0.691216, 
+                Val Optimized Typed MAE: 14.101281,
+                Val Hausdorff: 2.175952,
+                Atom Type Acc: 29.29%
+
+Epoch 77/100 - Train Loss: 1.600031, 
+                Val MAE: 1.825333, Val Optimized MAE: 0.687921, 
+                Val Optimized Typed MAE: 14.122708,
+                Val Hausdorff: 2.187501,
+                Atom Type Acc: 29.93%
+
+Epoch 78/100 - Train Loss: 1.632016, 
+                Val MAE: 1.834354, Val Optimized MAE: 0.686425, 
+                Val Optimized Typed MAE: 15.434719,
+                Val Hausdorff: 2.163042,
+                Atom Type Acc: 23.48%
+
+Epoch 79/100 - Train Loss: 1.565573, 
+                Val MAE: 1.820314, Val Optimized MAE: 0.684990, 
+                Val Optimized Typed MAE: 13.858764,
+                Val Hausdorff: 2.191221,
+                Atom Type Acc: 30.86%
+
+Epoch 80/100 - Train Loss: 1.517874, 
+                Val MAE: 1.817235, Val Optimized MAE: 0.684402, 
+                Val Optimized Typed MAE: 14.129767,
+                Val Hausdorff: 2.178102,
+                Atom Type Acc: 29.55%
+
+Epoch 81/100 - Train Loss: 1.484900, 
+                Val MAE: 1.832579, Val Optimized MAE: 0.691423, 
+                Val Optimized Typed MAE: 13.904043,
+                Val Hausdorff: 2.230993,
+                Atom Type Acc: 31.08%
+
+Epoch 82/100 - Train Loss: 1.520033, 
+                Val MAE: 1.833062, Val Optimized MAE: 0.686338, 
+                Val Optimized Typed MAE: 14.139573,
+                Val Hausdorff: 2.154949,
+                Atom Type Acc: 30.25%
+
+Epoch 83/100 - Train Loss: 1.518672, 
+                Val MAE: 1.835071, Val Optimized MAE: 0.692668, 
+                Val Optimized Typed MAE: 13.824776,
+                Val Hausdorff: 2.180079,
+                Atom Type Acc: 31.23%
+
+Epoch 84/100 - Train Loss: 1.495757, 
+                Val MAE: 1.822637, Val Optimized MAE: 0.686328, 
+                Val Optimized Typed MAE: 13.554591,
+                Val Hausdorff: 2.183710,
+                Atom Type Acc: 32.71%
+
+Epoch 85/100 - Train Loss: 1.458999, 
+                Val MAE: 1.827107, Val Optimized MAE: 0.684986, 
+                Val Optimized Typed MAE: 13.187817,
+                Val Hausdorff: 2.230298,
+                Atom Type Acc: 34.30%
+
+Epoch 86/100 - Train Loss: 1.387888, 
+                Val MAE: 1.825354, Val Optimized MAE: 0.686917, 
+                Val Optimized Typed MAE: 13.671215,
+                Val Hausdorff: 2.183707,
+                Atom Type Acc: 32.61%
+
+Epoch 87/100 - Train Loss: 1.355725, 
+                Val MAE: 1.826453, Val Optimized MAE: 0.689240, 
+                Val Optimized Typed MAE: 13.441320,
+                Val Hausdorff: 2.160238,
+                Atom Type Acc: 33.19%
+
+Epoch 88/100 - Train Loss: 1.356201, 
+                Val MAE: 1.822137, Val Optimized MAE: 0.687883, 
+                Val Optimized Typed MAE: 13.146939,
+                Val Hausdorff: 2.205376,
+                Atom Type Acc: 34.69%
+
+Epoch 89/100 - Train Loss: 1.443652, 
+                Val MAE: 1.813653, Val Optimized MAE: 0.681115, 
+                Val Optimized Typed MAE: 13.494327,
+                Val Hausdorff: 2.160867,
+                Atom Type Acc: 33.40%
+
+Epoch 90/100 - Train Loss: 1.328941, 
+                Val MAE: 1.834898, Val Optimized MAE: 0.689677, 
+                Val Optimized Typed MAE: 13.633175,
+                Val Hausdorff: 2.228608,
+                Atom Type Acc: 32.71%
+
+Epoch 91/100 - Train Loss: 1.309836, 
+                Val MAE: 1.820889, Val Optimized MAE: 0.687068, 
+                Val Optimized Typed MAE: 13.782272,
+                Val Hausdorff: 2.172123,
+                Atom Type Acc: 31.81%
+
+Epoch 92/100 - Train Loss: 1.337232, 
+                Val MAE: 1.810265, Val Optimized MAE: 0.685000, 
+                Val Optimized Typed MAE: 13.166558,
+                Val Hausdorff: 2.143327,
+                Atom Type Acc: 34.84%
+
+Epoch 93/100 - Train Loss: 1.391312, 
+                Val MAE: 1.816853, Val Optimized MAE: 0.688945, 
+                Val Optimized Typed MAE: 14.097999,
+                Val Hausdorff: 2.210946,
+                Atom Type Acc: 30.10%
+
+Epoch 94/100 - Train Loss: 1.308445, 
+                Val MAE: 1.813851, Val Optimized MAE: 0.684140, 
+                Val Optimized Typed MAE: 12.892977,
+                Val Hausdorff: 2.102312,
+                Atom Type Acc: 36.19%
+
+Epoch 95/100 - Train Loss: 1.347499, 
+                Val MAE: 1.781818, Val Optimized MAE: 0.679720, 
+                Val Optimized Typed MAE: 13.078335,
+                Val Hausdorff: 2.091231,
+                Atom Type Acc: 35.23%
+
+Epoch 96/100 - Train Loss: 1.217709, 
+                Val MAE: 1.803846, Val Optimized MAE: 0.683371, 
+                Val Optimized Typed MAE: 12.903998,
+                Val Hausdorff: 2.169955,
+                Atom Type Acc: 36.78%
+
+Epoch 97/100 - Train Loss: 1.310564, 
+                Val MAE: 1.789319, Val Optimized MAE: 0.678595, 
+                Val Optimized Typed MAE: 13.975626,
+                Val Hausdorff: 2.125279,
+                Atom Type Acc: 31.22%
+
+Epoch 98/100 - Train Loss: 1.221985, 
+                Val MAE: 1.821637, Val Optimized MAE: 0.686152, 
+                Val Optimized Typed MAE: 12.816450,
+                Val Hausdorff: 2.162105,
+                Atom Type Acc: 37.18%
+
+Epoch 99/100 - Train Loss: 1.205496, 
+                Val MAE: 1.808546, Val Optimized MAE: 0.681832, 
+                Val Optimized Typed MAE: 13.581552,
+                Val Hausdorff: 2.134038,
+                Atom Type Acc: 32.67%
+
+Epoch 100/100 - Train Loss: 1.222037, 
+                Val MAE: 1.850078, Val Optimized MAE: 0.696381, 
+                Val Optimized Typed MAE: 12.643845,
+                Val Hausdorff: 2.198576,
+                Atom Type Acc: 37.18%
+Training complete. Model saved to 'diffusion_results/FracPositionRegressionXPDF_20250514_215637_job6058_task0/samples/training_samples/pos_frac_T100_lr0.0001_epochs100_batch64_cond64_with_atoms_20250514-215639/vector_conditioned_rgb_model.pt'
+Test MAE: 1.8626,
+        Test Optimized MAE: 0.7033,
+        Test Optimized Typed MAE: 12.8517,
+        Test Hausdorff: 2.1875,
+        Test Atom Type Accuracy: 35.77%
+Final test MAE: 1.8626, Test Hausdorff: 2.1875, Test Atom Type Accuracy: 35.77%
+Final metrics saved to diffusion_results/FracPositionRegressionXPDF_20250514_215637_job6058_task0/samples/training_samples/pos_frac_T100_lr0.0001_epochs100_batch64_cond64_with_atoms_20250514-215639/final_metrics.csv
+Job completed at Wed May 14 23:23:18 CEST 2025

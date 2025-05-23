@@ -1,0 +1,17 @@
+2025-05-14 21:53:07,844 - INFO - Starting experiment with model: Diffusion
+2025-05-14 21:53:07,844 - INFO - SLURM Job ID: 6056, Task ID: 0
+2025-05-14 21:53:07,844 - INFO - Task type: FracPositionRegressionXPDF
+2025-05-14 21:53:07,844 - INFO - SLURM assigned GPU(s): 0,2,3,4
+2025-05-14 21:53:07,909 - INFO - GPU 0: NVIDIA TITAN RTX
+2025-05-14 21:53:07,910 - INFO - GPU 1: NVIDIA TITAN RTX
+2025-05-14 21:53:07,910 - INFO - GPU 2: NVIDIA TITAN RTX
+2025-05-14 21:53:07,910 - INFO - GPU 3: NVIDIA TITAN RTX
+2025-05-14 21:53:07,910 - INFO - Using device: cuda
+2025-05-14 21:53:07,917 - INFO - Using random seed: 42
+2025-05-14 21:53:07,917 - INFO - Loading dataset from data/CHILI-3K
+2025-05-14 21:53:08,102 - INFO - Dataset: CHILI-3K
+2025-05-14 21:53:08,102 - INFO - Train samples: 2013
+2025-05-14 21:53:08,102 - INFO - Validation samples: 252
+2025-05-14 21:53:08,102 - INFO - Test samples: 252
+2025-05-14 21:53:08,107 - INFO - Results will be saved to: diffusion_results/FracPositionRegressionXPDF_20250514_215308_job6056_task0
+2025-05-14 21:53:08,112 - ERROR - WANDB_API_KEY not found in environment variables

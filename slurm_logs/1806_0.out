@@ -1,0 +1,53 @@
+Job ID: 1806
+Array Task ID: 0
+Node: hendrixgpu06fl
+# CPUs: 4
+CUDA_VISIBLE_DEVICES before: 0,1,2,3
+SLURM_JOB_GPUS: 2,3,4,5
+CUDA_VISIBLE_DEVICES after: 0
+Available GPU(s):
+Sat May 10 22:09:15 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.86.15              Driver Version: 570.86.15      CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA TITAN RTX               Off |   00000000:3D:00.0 Off |                  N/A |
+| 41%   27C    P8             18W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA TITAN RTX               Off |   00000000:3E:00.0 Off |                  N/A |
+| 41%   29C    P8             16W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA TITAN RTX               Off |   00000000:88:00.0 Off |                  N/A |
+| 41%   27C    P8             21W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   3  NVIDIA TITAN RTX               Off |   00000000:89:00.0 Off |                  N/A |
+| 41%   27C    P8             25W /  280W |       1MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Using config file: configs/diffusion_xpdf_abs_base.yaml
+Running experiment with model type: Diffusion
+Loaded atom mapping with 54 categories for visualization
+Loaded atom mapping with 54 categories
+Created dataset with 2013 samples, image shape: torch.Size([2013, 3, 10, 10]), conditioning shape: torch.Size([2013, 6000])
+Atom types shape: torch.Size([2013, 1, 10, 10]), with 54 categories
+Loaded atom mapping with 54 categories
+Created dataset with 252 samples, image shape: torch.Size([252, 3, 10, 10]), conditioning shape: torch.Size([252, 6000])
+Atom types shape: torch.Size([252, 1, 10, 10]), with 54 categories
+Loaded atom mapping with 54 categories
+Created dataset with 252 samples, image shape: torch.Size([252, 3, 10, 10]), conditioning shape: torch.Size([252, 6000])
+Atom types shape: torch.Size([252, 1, 10, 10]), with 54 categories
+Using device: cpu

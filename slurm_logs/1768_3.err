@@ -1,0 +1,59 @@
+2025-05-10 21:40:54,273 - INFO - Starting experiment with model: MLP
+2025-05-10 21:40:54,273 - INFO - SLURM Job ID: 1768, Task ID: 3
+2025-05-10 21:40:54,273 - INFO - Task type: AbsPositionRegressionXRD
+2025-05-10 21:40:54,273 - INFO - SLURM assigned GPU(s): 0
+/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/cuda/__init__.py:262: UserWarning: 
+    Found GPU0 NVIDIA TITAN V which is of cuda capability 7.0.
+    PyTorch no longer supports this GPU because it is too old.
+    The minimum cuda capability supported by this library is 7.5.
+    
+  warnings.warn(
+2025-05-10 21:40:54,300 - INFO - GPU 0: NVIDIA TITAN V
+2025-05-10 21:40:54,301 - INFO - Using device: cuda
+2025-05-10 21:40:54,307 - INFO - Using random seed: 42
+2025-05-10 21:40:54,307 - INFO - Loading dataset from data/CHILI-3K
+2025-05-10 21:40:54,361 - INFO - Dataset: CHILI-3K
+2025-05-10 21:40:54,362 - INFO - Train samples: 2013
+2025-05-10 21:40:54,362 - INFO - Validation samples: 252
+2025-05-10 21:40:54,362 - INFO - Test samples: 252
+2025-05-10 21:40:54,364 - INFO - Results will be saved to: mlp_results/AbsPositionRegressionXRD_20250510_214054_job1768_task3
+2025-05-10 21:40:54,369 - INFO - Starting MLP baseline model training...
+2025-05-10 21:40:54,767 - INFO - Created BaselineMLP with 3 layers
+2025-05-10 21:40:54,768 - INFO - Starting MLP training for 200 epochs
+2025-05-10 21:40:54,894 - ERROR - Error during training: mat1 and mat2 shapes cannot be multiplied (32x580 and 6000x512)
+2025-05-10 21:40:54,901 - ERROR - Traceback (most recent call last):
+  File "/home/bwl137/master_thesis/run_benchmarks.py", line 698, in run_experiment
+    model, metrics = train_mlp_model(
+                     ^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/run_benchmarks.py", line 330, in train_mlp_model
+    predictions = model(sct)
+                  ^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/baseline_model.py", line 67, in forward
+    features = self.feature_extractor(x)  # [batch_size, hidden_channels]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/container.py", line 240, in forward
+    input = module(input)
+            ^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/linear.py", line 125, in forward
+    return F.linear(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (32x580 and 6000x512)
+

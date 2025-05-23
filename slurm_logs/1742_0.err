@@ -1,0 +1,62 @@
+2025-05-10 21:32:27,644 - INFO - Starting experiment with model: Diffusion
+2025-05-10 21:32:27,645 - INFO - SLURM Job ID: 1743, Task ID: 0
+2025-05-10 21:32:27,645 - INFO - Task type: AbsPositionRegressionXPDF
+2025-05-10 21:32:27,645 - INFO - SLURM assigned GPU(s): 0,1,2,3
+2025-05-10 21:32:27,701 - INFO - GPU 0: NVIDIA L40S
+2025-05-10 21:32:27,701 - INFO - GPU 1: NVIDIA L40S
+2025-05-10 21:32:27,701 - INFO - GPU 2: NVIDIA L40S
+2025-05-10 21:32:27,701 - INFO - GPU 3: NVIDIA L40S
+2025-05-10 21:32:27,701 - INFO - Using device: cuda
+2025-05-10 21:32:27,708 - INFO - Using random seed: 42
+2025-05-10 21:32:27,709 - INFO - Loading dataset from data/CHILI-3K
+2025-05-10 21:32:27,862 - INFO - Dataset: CHILI-3K
+2025-05-10 21:32:27,862 - INFO - Train samples: 2013
+2025-05-10 21:32:27,862 - INFO - Validation samples: 252
+2025-05-10 21:32:27,862 - INFO - Test samples: 252
+2025-05-10 21:32:27,864 - INFO - Results will be saved to: diffusion_results/AbsPositionRegressionXPDF_20250510_213227_job1743_task0
+2025-05-10 21:32:27,869 - INFO - Starting diffusion model training...
+2025-05-10 21:32:27,869 - INFO - Using atom mapping from atom_type_mapping.json
+2025-05-10 21:32:27,869 - INFO - Setting reporter to save images every 10 epochs
+2025-05-10 21:32:28,197 - ERROR - Error during training: CUDA error: uncorrectable ECC error encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2025-05-10 21:32:28,206 - ERROR - Traceback (most recent call last):
+  File "/home/bwl137/master_thesis/run_benchmarks.py", line 735, in run_experiment
+    model, metrics = train_vector_conditioned_ddpm(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/mnist_ddpm_cond.py", line 1362, in train_vector_conditioned_ddpm
+    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type) if not isinstance(train_data, torch.utils.data.Dataset) else train_data
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/mnist_ddpm_cond.py", line 1145, in __init__
+    for batch in data:
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 733, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 791, in _next_data
+    data = _utils.pin_memory.pin_memory(data, self._pin_memory_device)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/utils/data/_utils/pin_memory.py", line 108, in pin_memory
+    return data.pin_memory()
+           ^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch_geometric/data/data.py", line 385, in pin_memory
+    return self.apply(lambda x: x.pin_memory(), *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch_geometric/data/data.py", line 342, in apply
+    store.apply(func, *args)
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch_geometric/data/storage.py", line 201, in apply
+    self[key] = recursive_apply(value, func)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch_geometric/data/storage.py", line 897, in recursive_apply
+    return func(data)
+           ^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch_geometric/data/data.py", line 385, in <lambda>
+    return self.apply(lambda x: x.pin_memory(), *args)
+                                ^^^^^^^^^^^^^^
+RuntimeError: CUDA error: uncorrectable ECC error encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
