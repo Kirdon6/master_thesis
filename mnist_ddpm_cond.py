@@ -9,6 +9,8 @@ import math
 import pandas as pd
 import os
 import wandb
+import json
+import time
 
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
 from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
@@ -1877,9 +1879,44 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     )
     
     # Save model
-    model_path = os.path.join(samples_dir, "vector_conditioned_rgb_model.pt")
-    torch.save(model.state_dict(), model_path)
-    print(f"Training complete. Model saved to '{model_path}'")
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    model_base_path = os.path.join(samples_dir, f"model_{timestamp}")
+    
+    # Save the full model
+    torch.save(model, f"{model_base_path}_full.pt")
+    
+    # Save just the state dict
+    torch.save(model.state_dict(), f"{model_base_path}_state_dict.pt")
+    
+    # Save model configuration
+    model_config = {
+        'T': T,
+        'cond_dim': cond_dim,
+        'cond_embed_dim': cond_embed_dim,
+        'image_size': image_size,
+        'channels': channels,
+        'num_atom_types': num_atom_types,
+        'model_type': model_type
+    }
+    
+    with open(f"{model_base_path}_config.json", 'w') as f:
+        json.dump(model_config, f, indent=4)
+    
+    print(f"Training complete. Models saved to:")
+    print(f"- Full model: {model_base_path}_full.pt")
+    print(f"- State dict: {model_base_path}_state_dict.pt")
+    print(f"- Config: {model_base_path}_config.json")
+    
+    # Log model paths to wandb if enabled
+    if use_wandb and wandb_run is not None:
+        wandb.save(f"{model_base_path}_full.pt")
+        wandb.save(f"{model_base_path}_state_dict.pt")
+        wandb.save(f"{model_base_path}_config.json")
+        wandb.run.summary.update({
+            "model_path_full": f"{model_base_path}_full.pt",
+            "model_path_state_dict": f"{model_base_path}_state_dict.pt",
+            "model_path_config": f"{model_base_path}_config.json"
+        })
     
     # If test data is provided, run final evaluation
     if test_dataset is not None:

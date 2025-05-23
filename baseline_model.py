@@ -10,6 +10,8 @@ import numpy as np
 import wandb
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
 from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
+import json
+import time
 
 class BaselineMLP(nn.Module):
     """
@@ -741,7 +743,6 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
     atom_mapping = None
     if atom_mapping_path:
         try:
-            import json
             with open(atom_mapping_path, 'r') as f:
                 atom_mapping = json.load(f)
             num_atom_types = atom_mapping['num_categories']
@@ -1223,11 +1224,46 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
     
     
     
-    # Load best model for final evaluation
-    model_path = os.path.join(samples_dir, "mlp_model.pt")
-    torch.save(model.state_dict(), model_path)
-    print(f"Training complete. Model saved to '{model_path}'")
-
+    # Save models
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    model_base_path = os.path.join(samples_dir, f"model_{timestamp}")
+    
+    # Save the full model
+    torch.save(model, f"{model_base_path}_full.pt")
+    
+    # Save just the state dict
+    torch.save(model.state_dict(), f"{model_base_path}_state_dict.pt")
+    
+    # Save model configuration
+    model_config = {
+        'num_layers': num_layers,
+        'hidden_dim': hidden_dim,
+        'in_channels': in_channels,
+        'num_atom_types': model.num_atom_types if hasattr(model, 'num_atom_types') else 0,
+        'model_type': model_type,
+        'cond_type': cond_type,
+        'dropout': dropout
+    }
+    
+    with open(f"{model_base_path}_config.json", 'w') as f:
+        json.dump(model_config, f, indent=4)
+    
+    print(f"Training complete. Models saved to:")
+    print(f"- Full model: {model_base_path}_full.pt")
+    print(f"- State dict: {model_base_path}_state_dict.pt")
+    print(f"- Config: {model_base_path}_config.json")
+    
+    # Log model paths to wandb if enabled
+    if use_wandb and wandb_run is not None:
+        wandb.save(f"{model_base_path}_full.pt")
+        wandb.save(f"{model_base_path}_state_dict.pt")
+        wandb.save(f"{model_base_path}_config.json")
+        wandb.run.summary.update({
+            "model_path_full": f"{model_base_path}_full.pt",
+            "model_path_state_dict": f"{model_base_path}_state_dict.pt",
+            "model_path_config": f"{model_base_path}_config.json"
+        })
+    
     # When testing, store the test metrics to include in final report
     test_result_metrics = {}
     if test_dataset is not None:
@@ -1290,6 +1326,6 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
         })
         
         # Save model to wandb
-        wandb.save(model_path)
+        wandb.save(f"{model_base_path}_full.pt")
     
     return model, metrics 
