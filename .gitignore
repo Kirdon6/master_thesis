@@ -55,4 +55,5 @@ CHILI/
 data/
 logs/
 training_samples/
+slurm_logs/
 

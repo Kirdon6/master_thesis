@@ -1,2 +1,0 @@
-usage: run_benchmarks.py [-h] --config_path CONFIG_PATH [--resume RESUME]
-run_benchmarks.py: error: unrecognized arguments: --memory_efficient True --cudnn_benchmark False

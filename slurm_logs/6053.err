@@ -1,2 +1,0 @@
-usage: run_benchmarks.py [-h] --config_path CONFIG_PATH
-run_benchmarks.py: error: unrecognized arguments: --use_multi_gpu False
