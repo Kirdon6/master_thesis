@@ -1,0 +1,41 @@
+2025-05-10 22:01:54,900 - INFO - Starting experiment with model: MLP
+2025-05-10 22:01:54,900 - INFO - SLURM Job ID: 1796, Task ID: 3
+2025-05-10 22:01:54,900 - INFO - Task type: AbsPositionRegressionXRD
+2025-05-10 22:01:54,901 - INFO - SLURM assigned GPU(s): 0
+2025-05-10 22:01:54,929 - INFO - GPU 0: NVIDIA L40S
+2025-05-10 22:01:54,930 - INFO - Using device: cuda
+2025-05-10 22:01:54,936 - INFO - Using random seed: 42
+2025-05-10 22:01:54,936 - INFO - Loading dataset from data/CHILI-3K
+2025-05-10 22:01:54,986 - INFO - Dataset: CHILI-3K
+2025-05-10 22:01:54,986 - INFO - Train samples: 2013
+2025-05-10 22:01:54,986 - INFO - Validation samples: 252
+2025-05-10 22:01:54,986 - INFO - Test samples: 252
+2025-05-10 22:01:54,989 - INFO - Results will be saved to: mlp_results/AbsPositionRegressionXRD_20250510_220154_job1796_task3
+2025-05-10 22:01:54,993 - INFO - Starting MLP baseline model training...
+2025-05-10 22:01:55,165 - ERROR - Error during training: CUDA error: uncorrectable ECC error encountered
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+2025-05-10 22:01:55,168 - ERROR - Traceback (most recent call last):
+  File "/home/bwl137/master_thesis/run_benchmarks.py", line 698, in run_experiment
+    model, metrics = train_mlp_model(
+                     ^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/run_benchmarks.py", line 135, in train_mlp_model
+    ).to(device)
+      ^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1355, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 915, in _apply
+    module._apply(fn)
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 915, in _apply
+    module._apply(fn)
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 942, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1341, in convert
+    return t.to(
+           ^^^^^
+RuntimeError: CUDA error: uncorrectable ECC error encountered
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+

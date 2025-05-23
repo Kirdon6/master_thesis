@@ -1,0 +1,69 @@
+/home/bwl137/master_thesis/nano_diff/lib/python3.11/site-packages/torch/__config__.py:9: UserWarning: CUDA initialization: CUDA unknown error - this may be due to an incorrectly set up environment, e.g. changing env variable CUDA_VISIBLE_DEVICES after program start. Setting the available devices to be zero. (Triggered internally at /pytorch/c10/cuda/CUDAFunctions.cpp:109.)
+  return torch._C._show_config()
+2025-05-10 21:32:27,638 - INFO - Starting experiment with model: MLP
+2025-05-10 21:32:27,638 - INFO - SLURM Job ID: 1745, Task ID: 2
+2025-05-10 21:32:27,638 - INFO - Task type: AbsPositionRegressionXPDF
+2025-05-10 21:32:27,638 - WARNING - CUDA not available, using CPU
+2025-05-10 21:32:27,638 - INFO - Using device: cpu
+2025-05-10 21:32:27,646 - INFO - Using random seed: 42
+2025-05-10 21:32:27,646 - INFO - Loading dataset from data/CHILI-3K
+2025-05-10 21:32:27,812 - INFO - Dataset: CHILI-3K
+2025-05-10 21:32:27,812 - INFO - Train samples: 2013
+2025-05-10 21:32:27,812 - INFO - Validation samples: 252
+2025-05-10 21:32:27,812 - INFO - Test samples: 252
+2025-05-10 21:32:27,815 - INFO - Results will be saved to: mlp_results/AbsPositionRegressionXPDF_20250510_213227_job1745_task2
+2025-05-10 21:32:27,819 - INFO - Starting MLP baseline model training...
+2025-05-10 21:32:27,877 - INFO - Created BaselineMLP with 3 layers
+2025-05-10 21:32:27,879 - INFO - Starting MLP training for 200 epochs
+2025-05-10 21:32:35,960 - INFO - Epoch 1/200 - Train Loss: 2.069120, Val Loss: 2.067849, Val MAE: 5.058774, Val Hausdorff: 6.409635
+2025-05-10 21:32:36,194 - INFO - Saved new best model at epoch 1 with MAE: 5.058774
+2025-05-10 21:32:44,415 - INFO - Epoch 2/200 - Train Loss: 2.067125, Val Loss: 2.067487, Val MAE: 5.059083, Val Hausdorff: 6.352899
+2025-05-10 21:32:51,090 - INFO - Epoch 3/200 - Train Loss: 2.065891, Val Loss: 2.068656, Val MAE: 5.063828, Val Hausdorff: 6.195744
+2025-05-10 21:32:57,646 - INFO - Epoch 4/200 - Train Loss: 2.063260, Val Loss: 2.062049, Val MAE: 5.049922, Val Hausdorff: 6.405365
+2025-05-10 21:32:57,920 - INFO - Saved new best model at epoch 4 with MAE: 5.049922
+2025-05-10 21:33:05,043 - INFO - Epoch 5/200 - Train Loss: 2.061495, Val Loss: 2.060302, Val MAE: 5.047275, Val Hausdorff: 6.306788
+2025-05-10 21:33:05,339 - INFO - Saved new best model at epoch 5 with MAE: 5.047275
+2025-05-10 21:33:12,644 - INFO - Epoch 6/200 - Train Loss: 2.054661, Val Loss: 2.055716, Val MAE: 5.038599, Val Hausdorff: 6.313258
+2025-05-10 21:33:12,894 - INFO - Saved new best model at epoch 6 with MAE: 5.038599
+2025-05-10 21:33:20,049 - INFO - Epoch 7/200 - Train Loss: 2.049441, Val Loss: 2.052501, Val MAE: 5.030444, Val Hausdorff: 6.401641
+2025-05-10 21:33:20,281 - INFO - Saved new best model at epoch 7 with MAE: 5.030444
+2025-05-10 21:33:27,337 - INFO - Epoch 8/200 - Train Loss: 2.046464, Val Loss: 2.049488, Val MAE: 5.025544, Val Hausdorff: 6.287806
+2025-05-10 21:33:27,615 - INFO - Saved new best model at epoch 8 with MAE: 5.025544
+2025-05-10 21:33:34,909 - INFO - Epoch 9/200 - Train Loss: 2.051712, Val Loss: 2.065361, Val MAE: 5.056444, Val Hausdorff: 6.214965
+2025-05-10 21:33:41,252 - INFO - Epoch 10/200 - Train Loss: 2.055593, Val Loss: 2.051044, Val MAE: 5.029109, Val Hausdorff: 6.309341
+2025-05-10 21:33:48,346 - INFO - Epoch 11/200 - Train Loss: 2.046190, Val Loss: 2.050692, Val MAE: 5.027045, Val Hausdorff: 6.312629
+2025-05-10 21:33:54,846 - INFO - Epoch 12/200 - Train Loss: 2.041035, Val Loss: 2.048899, Val MAE: 5.024583, Val Hausdorff: 6.146565
+2025-05-10 21:33:55,162 - INFO - Saved new best model at epoch 12 with MAE: 5.024583
+2025-05-10 21:34:02,191 - INFO - Epoch 13/200 - Train Loss: 2.039237, Val Loss: 2.047220, Val MAE: 5.021790, Val Hausdorff: 6.158429
+2025-05-10 21:34:02,463 - INFO - Saved new best model at epoch 13 with MAE: 5.021790
+2025-05-10 21:34:09,683 - INFO - Epoch 14/200 - Train Loss: 2.040172, Val Loss: 2.047974, Val MAE: 5.023601, Val Hausdorff: 6.138595
+2025-05-10 21:34:16,092 - INFO - Epoch 15/200 - Train Loss: 2.037562, Val Loss: 2.045561, Val MAE: 5.018003, Val Hausdorff: 6.278380
+2025-05-10 21:34:16,376 - INFO - Saved new best model at epoch 15 with MAE: 5.018003
+2025-05-10 21:34:23,602 - INFO - Epoch 16/200 - Train Loss: 2.036447, Val Loss: 2.044522, Val MAE: 5.017379, Val Hausdorff: 6.138424
+2025-05-10 21:34:23,852 - INFO - Saved new best model at epoch 16 with MAE: 5.017379
+2025-05-10 21:34:31,294 - INFO - Epoch 17/200 - Train Loss: 2.035032, Val Loss: 2.044343, Val MAE: 5.018154, Val Hausdorff: 6.142714
+2025-05-10 21:34:37,750 - INFO - Epoch 18/200 - Train Loss: 2.034465, Val Loss: 2.043520, Val MAE: 5.015941, Val Hausdorff: 6.216432
+2025-05-10 21:34:38,027 - INFO - Saved new best model at epoch 18 with MAE: 5.015941
+2025-05-10 21:34:45,277 - INFO - Epoch 19/200 - Train Loss: 2.032312, Val Loss: 2.043770, Val MAE: 5.016918, Val Hausdorff: 6.116114
+2025-05-10 21:34:52,003 - INFO - Epoch 20/200 - Train Loss: 2.031216, Val Loss: 2.049397, Val MAE: 5.026217, Val Hausdorff: 6.216317
+2025-05-10 21:34:59,392 - INFO - Epoch 21/200 - Train Loss: 2.029734, Val Loss: 2.040399, Val MAE: 5.011230, Val Hausdorff: 6.158192
+2025-05-10 21:34:59,656 - INFO - Saved new best model at epoch 21 with MAE: 5.011230
+2025-05-10 21:35:07,083 - INFO - Epoch 22/200 - Train Loss: 2.030053, Val Loss: 2.039760, Val MAE: 5.013324, Val Hausdorff: 5.957680
+2025-05-10 21:35:13,624 - INFO - Epoch 23/200 - Train Loss: 2.026451, Val Loss: 2.036914, Val MAE: 5.004945, Val Hausdorff: 6.034800
+2025-05-10 21:35:13,876 - INFO - Saved new best model at epoch 23 with MAE: 5.004945
+2025-05-10 21:35:21,384 - INFO - Epoch 24/200 - Train Loss: 2.027518, Val Loss: 2.037917, Val MAE: 5.007292, Val Hausdorff: 6.033607
+2025-05-10 21:35:28,721 - INFO - Epoch 25/200 - Train Loss: 2.022768, Val Loss: 2.038956, Val MAE: 5.009401, Val Hausdorff: 5.982101
+2025-05-10 21:35:36,637 - INFO - Epoch 26/200 - Train Loss: 2.029130, Val Loss: 2.031446, Val MAE: 4.997355, Val Hausdorff: 5.905864
+2025-05-10 21:35:36,901 - INFO - Saved new best model at epoch 26 with MAE: 4.997355
+2025-05-10 21:35:47,340 - INFO - Epoch 27/200 - Train Loss: 2.018902, Val Loss: 2.032536, Val MAE: 4.999121, Val Hausdorff: 5.992481
+2025-05-10 21:35:59,342 - INFO - Epoch 28/200 - Train Loss: 2.017633, Val Loss: 2.031958, Val MAE: 4.999182, Val Hausdorff: 5.931677
+2025-05-10 21:36:14,234 - INFO - Epoch 29/200 - Train Loss: 2.015629, Val Loss: 2.026217, Val MAE: 4.989423, Val Hausdorff: 5.873664
+2025-05-10 21:36:14,486 - INFO - Saved new best model at epoch 29 with MAE: 4.989423
+2025-05-10 21:36:32,716 - INFO - Epoch 30/200 - Train Loss: 2.014193, Val Loss: 2.028275, Val MAE: 4.991475, Val Hausdorff: 5.997950
+2025-05-10 21:36:53,616 - INFO - Epoch 31/200 - Train Loss: 2.009136, Val Loss: 2.023426, Val MAE: 4.985982, Val Hausdorff: 5.836749
+2025-05-10 21:36:53,896 - INFO - Saved new best model at epoch 31 with MAE: 4.985982
+2025-05-10 21:37:15,850 - INFO - Epoch 32/200 - Train Loss: 2.007270, Val Loss: 2.025007, Val MAE: 4.991174, Val Hausdorff: 5.763391
+2025-05-10 21:37:38,096 - INFO - Epoch 33/200 - Train Loss: 2.008386, Val Loss: 2.023369, Val MAE: 4.988203, Val Hausdorff: 5.739865
+2025-05-10 21:38:01,118 - INFO - Epoch 34/200 - Train Loss: 2.004536, Val Loss: 2.020574, Val MAE: 4.984101, Val Hausdorff: 5.747963
+2025-05-10 21:38:01,408 - INFO - Saved new best model at epoch 34 with MAE: 4.984101
+slurmstepd: error: *** JOB 1745 ON hendrixgpu06fl CANCELLED AT 2025-05-10T21:38:10 ***

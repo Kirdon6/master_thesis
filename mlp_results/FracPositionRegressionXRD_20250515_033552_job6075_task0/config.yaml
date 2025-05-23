@@ -1,0 +1,37 @@
+Model_config:
+  atom_mapping_path: atom_type_mapping.json
+  cond_type: xrd
+  dropout: 0.1
+  hidden_dim: 512
+  in_channels: 580
+  model_type: pos_frac
+  num_layers: 3
+Train_config:
+  batch_size: 32
+  epochs: 200
+  learning_rate: 0.001
+  lr_gamma: 0.5
+  lr_scheduler: true
+  lr_step_size: 30
+  max_patience: 20
+  num_workers: 0
+  seed: 42
+  weight_decay: 0.0001
+dataset:
+  graph_type: central
+  name: CHILI-3K
+  root: data
+log_dir: logs
+model: MLP
+output_dir: mlp_results
+task: FracPositionRegressionXRD
+use_wandb: true
+wandb_config:
+  entity: kirdon6-university-of-copenhagen
+  mode: online
+  name: structure-prediction
+  project: cluster-structure-prediction
+  tags:
+  - mlp
+  - xRD
+  - CHILI

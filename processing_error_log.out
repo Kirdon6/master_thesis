@@ -6679,3 +6679,33 @@ data\CHILI-100K\raw\cod_output_080124\9000862.h5
 data\CHILI-100K\raw\cod_output_080124\9000864.h5
 [enforce fail at inline_container.cc:626] . unexpected pos 15360 vs 15280
 
+data/CHILI-3K/raw/sim_output_080124/Fluorite_TiO2.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/CadmiumChloride_TlO2.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/ZincBlende_NaO.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/Wurtzite_ZrO.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/AntiFluorite_Pb2O.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/CaesiumChloride_YO.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/AntiFluorite_K2O.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/CadmiumIodide_MoO2.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/AntiFluorite_As2O.h5
+cannot access local variable 'data_central' where it is not associated with a value
+
+data/CHILI-3K/raw/sim_output_080124/AntiFluorite_Ag2O.h5
+cannot access local variable 'data_central' where it is not associated with a value
+

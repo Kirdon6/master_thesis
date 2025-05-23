@@ -1,0 +1,27 @@
+Model_config:
+  T: 100
+  atom_mapping_path: atom_type_mapping.json
+  cond_dim: 6000
+  cond_embed_dim: 64
+  cond_type: xPDF
+  image_size:
+  - 10
+  - 10
+  model_type: pos_abs
+Train_config:
+  batch_size: 64
+  ema: true
+  epochs: 100
+  learning_rate: 0.0001
+  num_workers: 0
+  reporter_save_frequency: 10
+  seed: 42
+dataset:
+  graph_type: central
+  name: CHILI-3K
+  root: data
+generate_samples: true
+log_dir: logs
+model: Diffusion
+output_dir: diffusion_results
+task: AbsPositionRegressionXPDF

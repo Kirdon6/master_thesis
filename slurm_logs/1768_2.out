@@ -1,0 +1,30 @@
+Job ID: 1771
+Array Task ID: 2
+Node: hendrixgpu23fl
+# CPUs: 4
+CUDA_VISIBLE_DEVICES before: 0
+SLURM_JOB_GPUS: 1
+CUDA_VISIBLE_DEVICES after: 0
+Available GPU(s):
+Sat May 10 21:40:43 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.86.15              Driver Version: 570.86.15      CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    Off |   00000000:66:00.0 Off |                    0 |
+| N/A   29C    P8             32W /  350W |       1MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Using config file: configs/mlp_xpdf_abs_base.yaml
+Running experiment with model type: MLP

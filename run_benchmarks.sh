@@ -36,14 +36,12 @@ nvidia-smi
 
 # List of config files to run sequentially
 CONFIG_FILES=(
-    "configs/diffusion_xpdf_abs_base.yaml"
-    "configs/diffusion_xrd_frac_base.yaml"
-    "configs/diffusion_xrd_abs_base.yaml"
-    "configs/mlp_xpdf_abs_base.yaml"
-    "configs/mlp_xpdf_frac_base.yaml"
-    "configs/mlp_xrd_frac_base.yaml"
-    "configs/mlp_xrd_abs_base.yaml"
-
+    "configs/diffusion_xpdf_abs_T1000.yaml"
+    "configs/diffusion_xpdf_frac_T1000.yaml"
+    "configs/diffusion_xrd_frac_base_long.yaml"
+    "configs/diffusion_xrd_abs_base_long.yaml"
+    "configs/diffusion_xrd_abs_T1000.yaml"
+    "configs/diffusion_xrd_frac_T1000.yaml"
 )
 
 # Run each config file sequentially

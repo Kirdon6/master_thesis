@@ -1,0 +1,1 @@
+{"dataset/train_samples":2013,"error":"Neither xPDF nor XRD found in batch data","system/num_gpus":1,"_step":1,"_wandb":{"runtime":1},"dataset/test_samples":252,"_timestamp":1.7474512998918674e+09,"system/device":"cuda","dataset/val_samples":252,"_runtime":1.639344962}
