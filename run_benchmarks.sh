@@ -16,16 +16,16 @@ mkdir -p slurm_logs
 export CUDA_LAUNCH_BLOCKING=1
 export TORCH_USE_CUDA_DSA=1
 
-# IMPORTANT: Set CUDA_VISIBLE_DEVICES *before* activating Python environment
-# Convert Slurm's GPU IDs into proper CUDA device indices (0,1,2,3)
-if [ -n "$SLURM_JOB_GPUS" ]; then
-    # This is a comma-separated list from Slurm like "0,1,2,3" or "1,2,3,4"
-    echo "Slurm assigned GPUs: $SLURM_JOB_GPUS"
+# # IMPORTANT: Set CUDA_VISIBLE_DEVICES *before* activating Python environment
+# # Convert Slurm's GPU IDs into proper CUDA device indices (0,1,2,3)
+# if [ -n "$SLURM_JOB_GPUS" ]; then
+#     # This is a comma-separated list from Slurm like "0,1,2,3" or "1,2,3,4"
+#     echo "Slurm assigned GPUs: $SLURM_JOB_GPUS"
     
-    # Always use sequential device IDs starting from 0, regardless of what Slurm assigns
-    export CUDA_VISIBLE_DEVICES=0
-    echo "Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-fi
+#     # Always use sequential device IDs starting from 0, regardless of what Slurm assigns
+#     export CUDA_VISIBLE_DEVICES=0
+#     echo "Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+# fi
 
 # Now activate the environment AFTER setting CUDA_VISIBLE_DEVICES
 source ~/master_thesis/nano_diff/bin/activate
