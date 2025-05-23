@@ -458,8 +458,22 @@ class DDPM(nn.Module):
         self.T = T
         self.cond_dim = cond_dim
 
+        # Create cosine noise schedule for continuous variables (similar to discrete transitions)
+        def cosine_beta_schedule(timesteps, s=0.008):
+            """
+            Cosine schedule as proposed in https://arxiv.org/abs/2102.09672
+            """
+            steps = timesteps + 1
+            x = torch.linspace(0, timesteps, steps)
+            alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
+            alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+            betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+            
+            # Clamp to ensure beta values are in reasonable range
+            return torch.clamp(betas, min=beta_1, max=beta_T)
+
         # Registering as buffers to ensure they get transferred to the GPU automatically
-        self.register_buffer("beta", torch.linspace(beta_1, beta_T, T+1))
+        self.register_buffer("beta", cosine_beta_schedule(T))
         self.register_buffer("alpha", 1-self.beta)
         self.register_buffer("alpha_bar", self.alpha.cumprod(dim=0))
         
