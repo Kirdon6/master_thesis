@@ -1,0 +1,1 @@
+{"dataset/test_samples":252,"_timestamp":1.7480018818719962e+09,"dataset/train_samples":2013,"_wandb":{"runtime":56},"_runtime":56.651710004,"_step":1,"model/parameters":7220409,"dataset/val_samples":252,"system/device":"cuda","system/num_gpus":1,"error":"CUDA error: device-side assert triggered\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"}

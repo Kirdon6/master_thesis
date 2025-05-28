@@ -1,0 +1,98 @@
+_wandb:
+    value:
+        cli_version: 0.19.11
+        m: []
+        python_version: 3.11.3
+        t:
+            "1":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 55
+                - 77
+            "2":
+                - 1
+                - 5
+                - 41
+                - 53
+                - 55
+                - 77
+            "3":
+                - 2
+                - 13
+                - 15
+                - 16
+                - 23
+                - 55
+                - 61
+                - 62
+            "4": 3.11.3
+            "5": 0.19.11
+            "8":
+                - 5
+            "12": 0.19.11
+            "13": linux-x86_64
+Model_config:
+    value:
+        T: 100
+        atom_mapping_path: atom_type_mapping.json
+        cond_dim: 6000
+        cond_embed_dim: 64
+        cond_type: xPDF
+        image_size:
+            - 10
+            - 10
+        model_type: pos_abs
+Train_config:
+    value:
+        batch_size: 64
+        ema: true
+        epochs: 300
+        learning_rate: 0.0001
+        num_workers: 0
+        seed: 42
+batch_size:
+    value: 64
+dataset:
+    value:
+        graph_type: central
+        name: CHILI-3K
+        root: data
+dataset_size:
+    value: 2013
+device:
+    value: cuda:0
+ema:
+    value: true
+epochs:
+    value: 300
+generate_samples:
+    value: true
+learning_rate:
+    value: 0.0001
+log_dir:
+    value: logs
+model:
+    value: Diffusion
+optimizer:
+    value: Adam
+output_dir:
+    value: diffusion_results
+scheduler:
+    value: ExponentialLR
+task:
+    value: AbsPositionRegressionXPDF
+use_wandb:
+    value: true
+wandb_config:
+    value:
+        entity: kirdon6-university-of-copenhagen
+        mode: online
+        name: structure-prediction
+        project: cluster-structure-prediction
+        tags:
+            - diffusion
+            - xPDF
+            - CHILI
+            - job_4354

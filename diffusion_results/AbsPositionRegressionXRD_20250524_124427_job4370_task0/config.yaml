@@ -1,0 +1,36 @@
+Model_config:
+  T: 100
+  atom_mapping_path: atom_type_mapping.json
+  cond_dim: 580
+  cond_embed_dim: 64
+  cond_type: xrd
+  image_size:
+  - 10
+  - 10
+  model_type: pos_abs
+Train_config:
+  batch_size: 64
+  ema: true
+  epochs: 300
+  learning_rate: 0.0001
+  num_workers: 0
+  seed: 42
+dataset:
+  graph_type: central
+  name: CHILI-3K
+  root: data
+generate_samples: true
+log_dir: logs
+model: Diffusion
+output_dir: diffusion_results
+task: AbsPositionRegressionXRD
+use_wandb: true
+wandb_config:
+  entity: kirdon6-university-of-copenhagen
+  mode: online
+  name: structure-prediction
+  project: cluster-structure-prediction
+  tags:
+  - diffusion
+  - xrd
+  - CHILI
