@@ -750,7 +750,7 @@ class DDPM(nn.Module):
         
         # Calculate loss for continuous coordinates
         predicted_coords = network_output['coords']
-        continuous_loss = F.mse_loss(x0, predicted_coords)
+        continuous_loss = F.mse_loss(epsilon, predicted_coords)
         
         # Initialize with continuous loss
         result = {
