@@ -296,8 +296,8 @@ class ScoreNet(nn.Module):
         if self.use_atom_types:
             self.atom_type_head = nn.Conv2d(channels[0] * 2, num_atom_types, 3, stride=1, padding=1)
         
-        # The swish activation function
-        self.act = lambda x: x * torch.sigmoid(x)
+        # The swish activation function (equivalent to SiLU)
+        self.act = nn.SiLU()
         self.marginal_prob_std = marginal_prob_std
     
     def forward(self, x, t, cond, atom_types=None): 
