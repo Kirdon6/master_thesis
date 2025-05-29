@@ -1890,6 +1890,64 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Save model
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     model_base_path = os.path.join(samples_dir, f"model_{timestamp}")
+
+    # If test data is provided, run final evaluation
+    if test_dataset is not None:
+        test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
+        metrics['test_mae'] = test_metrics['mae']
+        metrics['test_hausdorff'] = test_metrics['hausdorff']
+        metrics['test_atom_type_accuracy'] = test_metrics['atom_type_accuracy']
+        metrics['test_optimized_mae'] = test_metrics['optimized_mae']
+        metrics['test_optimized_typed_mae'] = test_metrics['optimized_typed_mae']
+        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
+        
+        # Log final test metrics to wandb
+        if use_wandb and wandb_run is not None:
+            wandb.log({
+                "test/mae": test_metrics['mae'],
+                "test/hausdorff": test_metrics['hausdorff'],
+                "test/atom_type_accuracy": test_metrics['atom_type_accuracy'],
+                "test/optimized_mae": test_metrics['optimized_mae'],
+                "test/optimized_typed_mae": test_metrics['optimized_typed_mae']
+            })
+
+
+
+     # Collect model parameters
+    model_parameters = {
+        'model_type': model_type,
+        'T': T,
+        'learning_rate': learning_rate,
+        'epochs': epochs,
+        'batch_size': batch_size,
+        'ema': ema,
+        'cond_dim': cond_dim,
+        'cond_embed_dim': cond_embed_dim,
+        'image_size_h': image_size[0],
+        'image_size_w': image_size[1],
+        'num_atom_types': num_atom_types,
+        'atom_mapping_path': atom_mapping_path,
+        'device': str(device)
+    }
+    
+    # Save metrics to CSV
+    metrics_path = os.path.join(samples_dir, "final_metrics.csv")
+    save_metrics_to_csv(metrics, metrics_path, model_parameters)
+    
+    # Log model architecture summary to wandb if enabled
+    if use_wandb and wandb_run is not None:
+        # Count total parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        
+        # Add model summary to wandb
+        wandb.run.summary.update({
+            "model/total_parameters": total_params,
+            "model/type": "DDPM",
+            "model/diffusion_steps": T,
+            "training/final_loss": metrics['train_losses'][-1] if metrics['train_losses'] else None,
+            "results/best_val_mae": min(metrics['val_maes']) if metrics['val_maes'] else None,
+            "results/final_test_mae": metrics.get('test_mae', None),
+        })
     
     # Save the full model
     torch.save(model, f"{model_base_path}_full.pt")
@@ -1927,60 +1985,8 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             "model_path_config": f"{model_base_path}_config.json"
         })
     
-    # If test data is provided, run final evaluation
-    if test_dataset is not None:
-        test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
-        metrics['test_mae'] = test_metrics['mae']
-        metrics['test_hausdorff'] = test_metrics['hausdorff']
-        metrics['test_atom_type_accuracy'] = test_metrics['atom_type_accuracy']
-        metrics['test_optimized_mae'] = test_metrics['optimized_mae']
-        metrics['test_optimized_typed_mae'] = test_metrics['optimized_typed_mae']
-        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
-        
-        # Log final test metrics to wandb
-        if use_wandb and wandb_run is not None:
-            wandb.log({
-                "test/mae": test_metrics['mae'],
-                "test/hausdorff": test_metrics['hausdorff'],
-                "test/atom_type_accuracy": test_metrics['atom_type_accuracy'],
-                "test/optimized_mae": test_metrics['optimized_mae'],
-                "test/optimized_typed_mae": test_metrics['optimized_typed_mae']
-            })
     
-    # Collect model parameters
-    model_parameters = {
-        'model_type': model_type,
-        'T': T,
-        'learning_rate': learning_rate,
-        'epochs': epochs,
-        'batch_size': batch_size,
-        'ema': ema,
-        'cond_dim': cond_dim,
-        'cond_embed_dim': cond_embed_dim,
-        'image_size_h': image_size[0],
-        'image_size_w': image_size[1],
-        'num_atom_types': num_atom_types,
-        'atom_mapping_path': atom_mapping_path,
-        'device': str(device)
-    }
     
-    # Save metrics to CSV
-    metrics_path = os.path.join(samples_dir, "final_metrics.csv")
-    save_metrics_to_csv(metrics, metrics_path, model_parameters)
-    
-    # Log model architecture summary to wandb if enabled
-    if use_wandb and wandb_run is not None:
-        # Count total parameters
-        total_params = sum(p.numel() for p in model.parameters())
-        
-        # Add model summary to wandb
-        wandb.run.summary.update({
-            "model/total_parameters": total_params,
-            "model/type": "DDPM",
-            "model/diffusion_steps": T,
-            "training/final_loss": metrics['train_losses'][-1] if metrics['train_losses'] else None,
-            "results/best_val_mae": min(metrics['val_maes']) if metrics['val_maes'] else None,
-            "results/final_test_mae": metrics.get('test_mae', None),
-        })
+   
     
     return model, metrics 
