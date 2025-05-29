@@ -453,11 +453,10 @@ class DDPM(nn.Module):
 
         # Pass input directly to network, no reshaping needed
         self._network = network
-        # Wrapper to normalize time to [0,1] range
-        self.network = lambda x, t, cond, atom_types=None: self._network(x, (t.squeeze()/T), cond, atom_types)
-
-        # Total number of time steps
+        # Store T for the wrapper method
         self.T = T
+        
+        # Total number of time steps
         self.cond_dim = cond_dim
 
         # Create cosine noise schedule for continuous variables (similar to discrete transitions)
@@ -487,6 +486,9 @@ class DDPM(nn.Module):
         if self.has_atom_types:
             self.discrete_transition = DiscreteTransition(num_atom_types, T=T, schedule='cosine')
 
+    def network(self, x, t, cond, atom_types=None):
+        """Wrapper to normalize time to [0,1] range before passing to the inner network."""
+        return self._network(x, (t.squeeze()/self.T), cond, atom_types)
 
     def forward_diffusion(self, x0, t, epsilon=None, atom_types=None):
         '''
@@ -1526,10 +1528,13 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # Define a simple marginal probability std function that can be pickled
+    def marginal_prob_std_fn(t):
+        return torch.ones(1).to(device)
 
     # Construct Unet
     unet = ScoreNet(
-        (lambda t: torch.ones(1).to(device)),
+        marginal_prob_std_fn,
         cond_dim=cond_dim,
         cond_embed_dim=cond_embed_dim,
         num_atom_types=num_atom_types
