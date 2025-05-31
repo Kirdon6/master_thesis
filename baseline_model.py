@@ -1221,6 +1221,30 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
         wandb_run=wandb_run)
     
     
+        # When testing, store the test metrics to include in final report
+    test_result_metrics = {}
+    if test_dataset is not None:
+        test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
+        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
+        
+        # Store test metrics for CSV reporting
+        test_result_metrics = {
+            'test_mae': test_metrics['mae'],
+            'test_hausdorff': test_metrics['hausdorff'],
+            'test_optimized_mae': test_metrics['optimized_mae'],
+            'test_optimized_typed_mae': test_metrics['optimized_typed_mae'],
+            'test_atom_type_accuracy': test_metrics['atom_type_accuracy']
+        }
+        
+        # Log final test metrics to wandb
+        if use_wandb and wandb_run is not None:
+            wandb.log({
+                "test/mae": test_metrics['mae'],
+                "test/hausdorff": test_metrics['hausdorff'],
+                "test/atom_type_accuracy": test_metrics['atom_type_accuracy'],
+                "test/optimized_mae": test_metrics['optimized_mae'],
+                "test/optimized_typed_mae": test_metrics['optimized_typed_mae'],
+            })
     
     # Save models
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1262,32 +1286,7 @@ def train_mlp_model(train_loader, val_loader, test_loader, sample_dir=None, cond
             "model_path_config": f"{model_base_path}_config.json"
         })
     
-    # When testing, store the test metrics to include in final report
-    test_result_metrics = {}
-    if test_dataset is not None:
-        model.load_state_dict(torch.load(os.path.join(samples_dir, "mlp_model.pt")))
-        test_metrics = test(model, test_dataset, batch_size=batch_size, device=device)
-        print(f"Final test MAE: {test_metrics['mae']:.4f}, Test Hausdorff: {test_metrics['hausdorff']:.4f}, Test Optimized MAE: {test_metrics['optimized_mae']:.4f}, Test Optimized Typed MAE: {test_metrics['optimized_typed_mae']:.4f}, Test Atom Type Accuracy: {test_metrics['atom_type_accuracy']:.2f}%")
-        
-        # Store test metrics for CSV reporting
-        test_result_metrics = {
-            'test_mae': test_metrics['mae'],
-            'test_hausdorff': test_metrics['hausdorff'],
-            'test_optimized_mae': test_metrics['optimized_mae'],
-            'test_optimized_typed_mae': test_metrics['optimized_typed_mae'],
-            'test_atom_type_accuracy': test_metrics['atom_type_accuracy']
-        }
-        
-        # Log final test metrics to wandb
-        if use_wandb and wandb_run is not None:
-            wandb.log({
-                "test/mae": test_metrics['mae'],
-                "test/hausdorff": test_metrics['hausdorff'],
-                "test/atom_type_accuracy": test_metrics['atom_type_accuracy'],
-                "test/optimized_mae": test_metrics['optimized_mae'],
-                "test/optimized_typed_mae": test_metrics['optimized_typed_mae'],
-            })
-    
+
     model_parameters = {
         'model_type': model_type,
         'num_layers': num_layers,
