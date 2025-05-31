@@ -1,3 +1,4 @@
+#!/bin/bash
 #SBATCH --job-name=structure_prediction
 #SBATCH --output=slurm_logs/%j.out       # Standard output log - %j is job ID
 #SBATCH --error=slurm_logs/%j.err        # Standard error log
