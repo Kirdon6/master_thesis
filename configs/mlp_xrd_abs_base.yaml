@@ -27,8 +27,8 @@ Train_config:
   batch_size: 32
   learning_rate: 0.001
   weight_decay: 0.0001
-  epochs: 200
-  max_patience: 20       # Early stopping patience
+  epochs: 300
+  max_patience: 300       # Early stopping patience
   seed: 42
   num_workers: 0
   lr_scheduler: true
