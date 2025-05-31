@@ -243,7 +243,7 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
     val_match_accuracies = []
     val_optimized_typed_maes = []
     # Setup loss functions
-    pos_criterion = torch.nn.SmoothL1Loss()
+    pos_criterion = torch.nn.MSELoss()
     
     # Compute class weights for atom types if possible
     all_atom_types = []
@@ -252,8 +252,6 @@ def train(model, optimizer, scheduler, train_data, val_data=None, test_data=None
         if atom_types is not None:
             all_atom_types.append(atom_types.flatten())
     
-    # Initialize default atom type criterion
-    atom_type_criterion = torch.nn.MSELoss()
     
     # If we have atom types, calculate class weights for a weighted criterion
     if all_atom_types:
