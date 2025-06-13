@@ -1242,7 +1242,7 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
     Dataset wrapper that pairs images with vector conditional information.
     Also includes atom types as an additional channel.
     """
-    def __init__(self, data, model_type='unknown', atom_mapping_path=None, cond_type='xPDF'):
+    def __init__(self, data, model_type='unknown', atom_mapping_path=None, cond_type='xPDF', ordering_method='lexicographic'):
         """
         Parameters
         ----------
@@ -1254,12 +1254,18 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
             Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
         cond_type: str
             Type of conditioning data ('xPDF' or 'XRD')
+        ordering_method: str
+            Method for ordering atoms in the 10x10 grid:
+            - 'lexicographic': Sort by x, then y, then z coordinates (recommended)
+            - 'distance': Greedy nearest-neighbor ordering
+            - 'none': No ordering (original behavior)
         """
         self.images = []
         self.atom_types = []
         self.conditioning = []
         self.atom_mapping = None
         self.num_categories = 0
+        self.ordering_method = ordering_method
         
         # Load atom type mapping if provided
         if atom_mapping_path:
@@ -1282,11 +1288,12 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
             else:
                 pos = batch.pos_frac
             
-            # Reshape positions to [batch_size, 3, height, width]
-            pos_reshaped = pos.view(-1, 3, 10, 10)
-            self.images.append(pos_reshaped)
+            # Reshape positions to [batch_size, num_atoms, 3] for ordering
+            batch_size = pos.shape[0] // 100  # Assuming 100 atoms per structure
+            pos_3d = pos.view(batch_size, 100, 3)
             
-            # Process atom types separately if mapping is available
+            # Process atom types if mapping is available
+            atom_indices_3d = None
             if has_atom_types and hasattr(batch, 'x'):
                 # Extract atom numbers (assuming the first column of x contains atom numbers)
                 atom_numbers = batch.x[:, 0].cpu()
@@ -1301,9 +1308,31 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
                     # Default to 0 if atom type not in mapping
                     atom_indices[i] = int(atom_num_to_idx.get(str(atom_num_int), 0))
                 
+                # Reshape to [batch_size, num_atoms] for ordering
+                atom_indices_3d = atom_indices.view(batch_size, 100)
+            
+            # Apply intelligent ordering
+            if self.ordering_method == 'lexicographic':
+                ordered_pos, ordered_atom_types = spatial_lexicographic_ordering(pos_3d, atom_indices_3d)
+            elif self.ordering_method == 'distance':
+                ordered_pos, ordered_atom_types = distance_based_ordering(pos_3d, atom_indices_3d, start_method='center')
+            elif self.ordering_method == 'none':
+                # Original behavior - no ordering
+                ordered_pos = pos_3d
+                ordered_atom_types = atom_indices_3d
+            else:
+                print(f"Warning: Unknown ordering method '{self.ordering_method}'. Using lexicographic ordering.")
+                ordered_pos, ordered_atom_types = spatial_lexicographic_ordering(pos_3d, atom_indices_3d)
+            
+            # Reshape positions to [batch_size, 3, height, width] after ordering
+            pos_reshaped = ordered_pos.permute(0, 2, 1).view(batch_size, 3, 10, 10)
+            self.images.append(pos_reshaped)
+            
+            # Process ordered atom types if available
+            if has_atom_types and ordered_atom_types is not None:
                 # Keep atom indices as discrete values (no normalization)
-                # Reshape to match position data shape
-                atom_indices_reshaped = atom_indices.view(-1, 1, 10, 10)
+                # Reshape to match position data shape [batch_size, 1, height, width]
+                atom_indices_reshaped = ordered_atom_types.view(batch_size, 1, 10, 10)
                 self.atom_types.append(atom_indices_reshaped)
             
             # Get conditioning vector (either xPDF or XRD)
@@ -1332,12 +1361,10 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
         self.conditioning = self.conditioning.squeeze(1)
         
         # Report dataset info
-        print(f"Created dataset with {len(self.images)} samples, "
-              f"image shape: {self.images.shape}, "
-              f"conditioning shape: {self.conditioning.shape}")
+        print(f"Created dataset with {len(self.images)} samples using '{self.ordering_method}' ordering")
+        print(f"Image shape: {self.images.shape}, conditioning shape: {self.conditioning.shape}")
         if has_atom_types:
-            print(f"Atom types shape: {self.atom_types.shape}, "
-                  f"with {self.num_categories} categories")
+            print(f"Atom types shape: {self.atom_types.shape}, with {self.num_categories} categories")
         
     def __len__(self):
         return len(self.images)
@@ -1443,7 +1470,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                                   epochs=100, batch_size=256, ema=True, cond_dim=6000, 
                                   cond_embed_dim=64, image_size=(10, 10), model_type='unknown',
                                   atom_mapping_path=None, sample_dir=None, cond_type='xPDF',
-                                  use_wandb=False, wandb_run=None):
+                                  ordering_method='lexicographic', use_wandb=False, wandb_run=None):
     """
     Train a vector-conditioned DDPM model on RGB images
     
@@ -1475,6 +1502,11 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         Type of model being trained (e.g., 'pos_abs' or 'pos_frac')
     atom_mapping_path: str, optional
         Path to the atom type mapping JSON file. If provided, atom types will be included as a 4th channel.
+    ordering_method: str
+        Method for ordering atoms in the 10x10 grid:
+        - 'lexicographic': Sort by x, then y, then z coordinates (recommended)
+        - 'distance': Greedy nearest-neighbor ordering
+        - 'none': No ordering (original behavior)
     use_wandb: bool
         Whether to use Weights & Biases for logging
     wandb_run: wandb.run
@@ -1520,9 +1552,9 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             num_atom_types = 0
     
     # Create custom datasets that pair images with conditioning vectors
-    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type)
-    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type )
-    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type)
+    train_dataset = VectorConditionedDataset(train_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type, ordering_method=ordering_method)
+    val_dataset = VectorConditionedDataset(val_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type, ordering_method=ordering_method)
+    test_dataset = VectorConditionedDataset(test_data, model_type=model_type, atom_mapping_path=atom_mapping_path, cond_type=cond_type, ordering_method=ordering_method)
 
     # Select device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -1990,3 +2022,326 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
    
     
     return model, metrics 
+
+
+def spatial_lexicographic_ordering(pos, atom_types=None):
+    """
+    Order atoms by spatial coordinates in lexicographic order (x, then y, then z).
+    This preserves spatial locality in the 10x10 grid representation.
+    
+    Parameters
+    ----------
+    pos: torch.tensor
+        Atomic positions of shape [batch_size, num_atoms, 3]
+    atom_types: torch.tensor, optional
+        Atom type indices of shape [batch_size, num_atoms]
+        
+    Returns
+    -------
+    tuple: (ordered_pos, ordered_atom_types)
+        Reordered positions and atom types (if provided)
+    """
+    original_shape = pos.shape
+    if len(original_shape) == 3:  # [batch_size, num_atoms, 3]
+        batch_size, num_atoms, _ = original_shape
+        pos_flat = pos.reshape(-1, 3)
+        if atom_types is not None:
+            atom_types_flat = atom_types.reshape(-1)
+    else:  # Already flattened
+        batch_size = original_shape[0] // 100  # Assuming 100 atoms per structure
+        num_atoms = 100
+        pos_flat = pos
+        atom_types_flat = atom_types
+    
+    ordered_pos_list = []
+    ordered_atom_types_list = []
+    
+    for batch_idx in range(batch_size):
+        start_idx = batch_idx * num_atoms
+        end_idx = (batch_idx + 1) * num_atoms
+        
+        batch_pos = pos_flat[start_idx:end_idx]  # [num_atoms, 3]
+        
+        # Create lexicographic ordering using composite key: x, then y, then z
+        # Scale coordinates to create a single sorting key
+        # Use larger multipliers to ensure proper lexicographic ordering
+        x_coords = batch_pos[:, 0]
+        y_coords = batch_pos[:, 1] 
+        z_coords = batch_pos[:, 2]
+        
+        # Normalize coordinates to [0, 1000] range to avoid overflow
+        x_min, x_max = torch.min(x_coords), torch.max(x_coords)
+        y_min, y_max = torch.min(y_coords), torch.max(y_coords)
+        z_min, z_max = torch.min(z_coords), torch.max(z_coords)
+        
+        # Avoid division by zero
+        x_range = torch.clamp(x_max - x_min, min=1e-8)
+        y_range = torch.clamp(y_max - y_min, min=1e-8)
+        z_range = torch.clamp(z_max - z_min, min=1e-8)
+        
+        x_scaled = ((x_coords - x_min) / x_range * 1000).int()
+        y_scaled = ((y_coords - y_min) / y_range * 1000).int()
+        z_scaled = ((z_coords - z_min) / z_range * 1000).int()
+        
+        # Create composite sorting key: x gets highest priority, then y, then z
+        composite_key = x_scaled * 1000000 + y_scaled * 1000 + z_scaled
+        sort_indices = torch.argsort(composite_key)
+        
+        ordered_batch_pos = batch_pos[sort_indices]
+        ordered_pos_list.append(ordered_batch_pos)
+        
+        if atom_types is not None:
+            batch_atom_types = atom_types_flat[start_idx:end_idx]
+            ordered_batch_atom_types = batch_atom_types[sort_indices]
+            ordered_atom_types_list.append(ordered_batch_atom_types)
+    
+    # Reconstruct the ordered tensors
+    ordered_pos = torch.stack(ordered_pos_list, dim=0).reshape(original_shape)
+    
+    if atom_types is not None:
+        if len(atom_types.shape) == 2:  # [batch_size, num_atoms]
+            ordered_atom_types = torch.stack(ordered_atom_types_list, dim=0)
+        else:  # flattened
+            ordered_atom_types = torch.cat(ordered_atom_types_list, dim=0)
+        return ordered_pos, ordered_atom_types
+    else:
+        return ordered_pos, None
+
+
+def distance_based_ordering(pos, atom_types=None, start_method='center'):
+    """
+    Order atoms using a greedy nearest-neighbor approach to minimize 
+    distances between adjacent positions in the 10x10 grid.
+    
+    Parameters
+    ----------
+    pos: torch.tensor
+        Atomic positions of shape [batch_size, num_atoms, 3]
+    atom_types: torch.tensor, optional
+        Atom type indices of shape [batch_size, num_atoms]
+    start_method: str
+        Method to choose starting atom ('center', 'corner', or 'random')
+        
+    Returns
+    -------
+    tuple: (ordered_pos, ordered_atom_types)
+    """
+    original_shape = pos.shape
+    if len(original_shape) == 3:  # [batch_size, num_atoms, 3]
+        batch_size, num_atoms, _ = original_shape
+        pos_flat = pos.reshape(-1, 3)
+        if atom_types is not None:
+            atom_types_flat = atom_types.reshape(-1)
+    else:
+        batch_size = original_shape[0] // 100
+        num_atoms = 100
+        pos_flat = pos
+        atom_types_flat = atom_types
+    
+    ordered_pos_list = []
+    ordered_atom_types_list = []
+    
+    for batch_idx in range(batch_size):
+        start_idx = batch_idx * num_atoms
+        end_idx = (batch_idx + 1) * num_atoms
+        
+        batch_pos = pos_flat[start_idx:end_idx]  # [num_atoms, 3]
+        
+        # Choose starting atom
+        if start_method == 'center':
+            # Start from atom closest to center of mass
+            center = torch.mean(batch_pos, dim=0)
+            distances_to_center = torch.norm(batch_pos - center.unsqueeze(0), dim=1)
+            start_atom = torch.argmin(distances_to_center).item()
+        elif start_method == 'corner':
+            # Start from atom with minimum coordinates
+            start_atom = torch.argmin(torch.sum(batch_pos, dim=1)).item()
+        else:  # random
+            start_atom = 0
+        
+        # Greedy nearest neighbor ordering
+        ordered_indices = [start_atom]
+        remaining_indices = list(range(num_atoms))
+        remaining_indices.remove(start_atom)
+        
+        current_pos = batch_pos[start_atom]
+        
+        while remaining_indices:
+            # Find nearest remaining atom
+            remaining_pos = batch_pos[remaining_indices]
+            distances = torch.norm(remaining_pos - current_pos.unsqueeze(0), dim=1)
+            nearest_idx = torch.argmin(distances).item()
+            nearest_atom = remaining_indices[nearest_idx]
+            
+            ordered_indices.append(nearest_atom)
+            remaining_indices.remove(nearest_atom)
+            current_pos = batch_pos[nearest_atom]
+        
+        # Reorder positions
+        ordered_batch_pos = batch_pos[ordered_indices]
+        ordered_pos_list.append(ordered_batch_pos)
+        
+        if atom_types is not None:
+            batch_atom_types = atom_types_flat[start_idx:end_idx]
+            ordered_batch_atom_types = batch_atom_types[ordered_indices]
+            ordered_atom_types_list.append(ordered_batch_atom_types)
+    
+    # Reconstruct ordered tensors
+    ordered_pos = torch.stack(ordered_pos_list, dim=0).reshape(original_shape)
+    
+    if atom_types is not None:
+        if len(atom_types.shape) == 2:
+            ordered_atom_types = torch.stack(ordered_atom_types_list, dim=0)
+        else:
+            ordered_atom_types = torch.cat(ordered_atom_types_list, dim=0)
+        return ordered_pos, ordered_atom_types
+    else:
+        return ordered_pos, None
+
+
+def hierarchical_quadrant_ordering(pos, atom_types=None):
+    """
+    Order atoms using hierarchical quadrant division with median-based center selection.
+    This innovative method preserves spatial locality at multiple scales by recursively
+    dividing space into quadrants and placing the most central atom at each level.
+    
+    Parameters
+    ----------
+    pos: torch.tensor
+        Atomic positions of shape [batch_size, num_atoms, 3]
+    atom_types: torch.tensor, optional
+        Atom type indices of shape [batch_size, num_atoms]
+        
+    Returns
+    -------
+    tuple: (ordered_pos, ordered_atom_types)
+    """
+    def find_most_central_atom(positions):
+        """Find the atom closest to the median coordinates (most central)"""
+        if len(positions) == 0:
+            return 0
+        
+        # Calculate median coordinates
+        median_coords = torch.median(positions, dim=0)[0]
+        
+        # Find atom closest to median
+        distances = torch.norm(positions - median_coords.unsqueeze(0), dim=1)
+        return torch.argmin(distances).item()
+    
+    def recursive_quadrant_order(positions, atom_indices, types_indices=None, target_size=4):
+        """Recursively order atoms by quadrant division"""
+        if len(positions) <= target_size:
+            # Base case: use lexicographic ordering for small groups
+            if len(positions) <= 1:
+                return atom_indices if types_indices is None else (atom_indices, types_indices)
+            
+            # Sort by distance from center for final ordering
+            center = torch.mean(positions, dim=0)
+            distances = torch.norm(positions - center.unsqueeze(0), dim=1)
+            sort_order = torch.argsort(distances)
+            
+            ordered_atom_indices = [atom_indices[i] for i in sort_order]
+            if types_indices is not None:
+                ordered_types_indices = [types_indices[i] for i in sort_order]
+                return ordered_atom_indices, ordered_types_indices
+            else:
+                return ordered_atom_indices
+        
+        # Find the most central atom
+        central_idx = find_most_central_atom(positions)
+        central_atom = atom_indices[central_idx]
+        central_pos = positions[central_idx]
+        central_type = types_indices[central_idx] if types_indices is not None else None
+        
+        # Remove central atom from consideration
+        remaining_positions = torch.cat([positions[:central_idx], positions[central_idx+1:]], dim=0)
+        remaining_atom_indices = atom_indices[:central_idx] + atom_indices[central_idx+1:]
+        remaining_types_indices = None
+        if types_indices is not None:
+            remaining_types_indices = types_indices[:central_idx] + types_indices[central_idx+1:]
+        
+        if len(remaining_positions) == 0:
+            return [central_atom] if types_indices is None else ([central_atom], [central_type])
+        
+        # Divide into 8 octants based on central position
+        octants = [[] for _ in range(8)]
+        octant_atom_indices = [[] for _ in range(8)]
+        octant_types_indices = [[] for _ in range(8)] if types_indices is not None else None
+        
+        for i, pos in enumerate(remaining_positions):
+            # Determine octant based on position relative to central atom
+            octant = 0
+            if pos[0] >= central_pos[0]: octant += 1
+            if pos[1] >= central_pos[1]: octant += 2  
+            if pos[2] >= central_pos[2]: octant += 4
+            
+            octants[octant].append(pos)
+            octant_atom_indices[octant].append(remaining_atom_indices[i])
+            if types_indices is not None:
+                octant_types_indices[octant].append(remaining_types_indices[i])
+        
+        # Recursively order each non-empty octant
+        final_order = [central_atom]
+        final_types_order = [central_type] if types_indices is not None else None
+        
+        for octant_idx in range(8):
+            if len(octants[octant_idx]) > 0:
+                octant_positions = torch.stack(octants[octant_idx])
+                octant_atoms = octant_atom_indices[octant_idx]
+                octant_types = octant_types_indices[octant_idx] if types_indices is not None else None
+                
+                if types_indices is not None:
+                    ordered_atoms, ordered_types = recursive_quadrant_order(
+                        octant_positions, octant_atoms, octant_types, target_size
+                    )
+                    final_order.extend(ordered_atoms)
+                    final_types_order.extend(ordered_types)
+                else:
+                    ordered_atoms = recursive_quadrant_order(
+                        octant_positions, octant_atoms, None, target_size
+                    )
+                    final_order.extend(ordered_atoms)
+        
+        return (final_order, final_types_order) if types_indices is not None else final_order
+    
+    # Process each batch
+    original_shape = pos.shape
+    if len(original_shape) == 3:  # [batch_size, num_atoms, 3]
+        batch_size, num_atoms, _ = original_shape
+    else:
+        batch_size = original_shape[0] // 100
+        num_atoms = 100
+        pos = pos.reshape(batch_size, num_atoms, 3)
+        if atom_types is not None:
+            atom_types = atom_types.reshape(batch_size, num_atoms)
+    
+    ordered_pos_list = []
+    ordered_atom_types_list = []
+    
+    for batch_idx in range(batch_size):
+        batch_pos = pos[batch_idx]  # [num_atoms, 3]
+        atom_indices = list(range(num_atoms))
+        
+        if atom_types is not None:
+            batch_atom_types = atom_types[batch_idx]
+            types_indices = batch_atom_types.tolist()
+            ordered_indices, ordered_types = recursive_quadrant_order(
+                batch_pos, atom_indices, types_indices
+            )
+            ordered_batch_atom_types = torch.tensor(ordered_types, dtype=batch_atom_types.dtype)
+            ordered_atom_types_list.append(ordered_batch_atom_types)
+        else:
+            ordered_indices = recursive_quadrant_order(batch_pos, atom_indices)
+        
+        # Reorder positions according to the hierarchical ordering
+        ordered_batch_pos = batch_pos[ordered_indices]
+        ordered_pos_list.append(ordered_batch_pos)
+    
+    # Reconstruct ordered tensors
+    ordered_pos = torch.stack(ordered_pos_list, dim=0)
+    
+    if atom_types is not None:
+        ordered_atom_types = torch.stack(ordered_atom_types_list, dim=0)
+        return ordered_pos, ordered_atom_types
+    else:
+        return ordered_pos, None

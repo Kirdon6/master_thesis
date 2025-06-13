@@ -324,6 +324,7 @@ def run_experiment(config_path, use_multi_gpu=False):
                 "cond_embed_dim": config['Model_config'].get('cond_embed_dim', 64),
                 "image_size": tuple(config['Model_config'].get('image_size', (10, 10))),
                 "model_type": config['Model_config'].get('model_type', 'pos_frac'),
+                "ordering_method": config['Model_config'].get('ordering_method', 'none'),
                 "use_wandb": use_wandb,
                 "wandb_run": wandb_run
             }
