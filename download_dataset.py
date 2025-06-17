@@ -1,9 +1,5 @@
+# Test script for downloading dataset and making splits
 import warnings
-import torch
-import torch.nn as nn
-import pandas as pd
-from torch_geometric.loader import DataLoader
-from torch_geometric.nn.models import GCN
 from CHILI_centralAtoms import CHILI
 
 root = 'data'

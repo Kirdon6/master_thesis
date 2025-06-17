@@ -1,4 +1,5 @@
 ### Modified CHILI dataset class
+### Courtesy of Ulrik Friis-Jensen
 ### Paper: https://doi.org/10.1145/3637528.3671538
 ### Data: https://doi.org/10.17894/ucph.e37b6615-8635-49cf-819d-eae60e781a96
 ### Code: https://github.com/UlrikFriisJensen/CHILI/blob/main/benchmark/dataset_class.py

@@ -2,15 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from torchvision import datasets, transforms, utils
+from torchvision import transforms, utils
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 import math
-import pandas as pd
 import os
 import wandb
-import json
-import time
+
 
 from benchmark_tasks_utils import position_MAE, hausdorff_distance, atom_type_accuracy
 from nano_evaluator import quick_batch_metric, quick_batch_metric_with_types, get_best_alignment_for_visualization
@@ -62,7 +60,7 @@ class DiscreteTransition:
     def _create_transition_matrices(self):
         """Create all transition matrices for the diffusion process."""
         matrices = []
-        for t in range(self.T + 1):  # Include t=0 to T
+        for t in range(self.T + 1):
             t_tensor = torch.tensor(float(t))
             
             # Calculate noise level based on schedule
@@ -112,26 +110,21 @@ class DiscreteTransition:
         batch_size = x_0.shape[0]
         t_flat = t.view(-1).to(torch.int64)
         
-        # Original shape to restore later
+        
         original_shape = x_0.shape
         
-        # Check if input is flattened or has spatial dimensions
+        
         if len(original_shape) == 3:
-            # Already in format [batch, height, width]
             height, width = original_shape[1], original_shape[2]
         else:
-            # Assume input is [batch, height*width]
-            # Try to infer height and width (assuming square grid)
             flat_dim = original_shape[1]
             height = width = int(math.sqrt(flat_dim))
             
-        # Flatten x_0 to [batch_size, height*width]
         x_0_flat = x_0.reshape(batch_size, -1)
         num_atoms = x_0_flat.shape[1]
         
         # Prepare noise if provided (ensure correct shape)
         if noise is not None:
-            # If noise is [batch, 1, height, width], reshape to [batch, height*width]
             noise_flat = noise.reshape(batch_size, -1)
         
         # Initialize output tensor
@@ -154,7 +147,7 @@ class DiscreteTransition:
                     # Sample from categorical distribution
                     x_t_flat[i, j] = torch.multinomial(transition_probs, 1)
                 else:
-                    # Use provided noise - assuming this is [0,1] uniform noise
+                    # Use provided noise
                     # Get the noise value for this position
                     noise_value = noise_flat[i, j].item()
                     
@@ -179,33 +172,6 @@ class DiscreteTransition:
             x_t = x_t_flat
         
         return x_t.to(torch.int64)
-    
-    def predict_start(self, model_output, x_t, t):
-        """
-        Predict x_0 given model output and x_t.
-        For the discrete case, model directly outputs categorical distribution over atom types.
-        
-        Parameters
-        ----------
-        model_output: torch.tensor
-            Model logits [batch_size, num_atom_types, ...]
-        x_t: torch.tensor
-            Current atom types at timestep t [batch_size, ...]
-        t: torch.tensor
-            Current timestep [batch_size, 1]
-            
-        Returns
-        -------
-        torch.tensor
-            Predicted original atom types x_0
-        """
-        # Convert model output logits to probabilities
-        probs = F.softmax(model_output, dim=1)
-        
-        # Get most likely atom type (argmax)
-        pred_x_0 = torch.argmax(probs, dim=1)
-        
-        return pred_x_0
 
 
 class Dense(nn.Module):
@@ -217,31 +183,30 @@ class Dense(nn.Module):
         return self.dense(x)[..., None, None]
 
 
-class ScoreNet(nn.Module):
-    """A time-dependent score-based model built upon U-Net architecture."""
+class UNet(nn.Module):
+    """A time-dependent model built upon U-Net architecture."""
 
     def __init__(self, marginal_prob_std, channels=[64, 128, 256, 512], embed_dim=256, cond_dim=6000, cond_embed_dim=64, num_atom_types=0):
-        """Initialize a time-dependent score-based network.
+        """Initialize a time-dependent network.
 
         Args:
-          marginal_prob_std: A function that takes time t and gives the standard
+            marginal_prob_std: A function that takes time t and gives the standard
             deviation of the perturbation kernel p_{0t}(x(t) | x(0)).
-          channels: The number of channels for feature maps of each resolution.
-          embed_dim: The dimensionality of Gaussian random feature embeddings.
-          cond_dim: The dimensionality of the conditioning vector.
-          cond_embed_dim: The dimensionality to embed the conditioning vector.
-          num_atom_types: Number of atom type categories (0 if not using atom types)
+            channels: The number of channels for feature maps of each resolution.
+            embed_dim: The dimensionality of Gaussian random feature embeddings.
+            cond_dim: The dimensionality of the conditioning vector.
+            cond_embed_dim: The dimensionality to embed the conditioning vector.
+            num_atom_types: Number of atom type categories (0 if not using atom types)
         """
         super().__init__()
         # Gaussian random feature embedding layer for time
         self.embed = nn.Sequential(GaussianFourierProjection(embed_dim=embed_dim),
-             nn.Linear(embed_dim, embed_dim))
+            nn.Linear(embed_dim, embed_dim))
         
-        # Store whether we're using atom types
         self.use_atom_types = num_atom_types > 0
         self.num_atom_types = num_atom_types
         
-        # Condition embedding layers to reduce dimensionality of the conditioning vector
+        # Condition embedding layers
         self.cond_embed = nn.Sequential(
             nn.Linear(cond_dim, 512),
             nn.SiLU(),
@@ -296,7 +261,6 @@ class ScoreNet(nn.Module):
         if self.use_atom_types:
             self.atom_type_head = nn.Conv2d(channels[0] * 2, num_atom_types, 3, stride=1, padding=1)
         
-        # The swish activation function (equivalent to SiLU)
         self.act = nn.SiLU()
         self.marginal_prob_std = marginal_prob_std
     
@@ -534,8 +498,6 @@ class DDPM(nn.Module):
             # Generate uniform noise for atom type sampling [batch_size, 1, height, width]
             atom_noise = torch.rand_like(atom_types.float())
             
-            # Remove channel dimension (we already know there's just one channel)
-            # shape becomes [batch_size, height, width]
             atom_types_no_channel = atom_types.squeeze(1)
             
             # Perform discrete diffusion
@@ -660,15 +622,15 @@ class DDPM(nn.Module):
         """
         # Check if conditioning vector has the right shape
         if cond is not None:
-            # If cond is [1, cond_dim], reshape to [cond_dim]
+            
             if cond.dim() == 2 and cond.shape[0] == 1:
                 cond = cond.squeeze(0)
         if cond is None:
-            # Generate random conditioning vector if none provided
+            
             cond = torch.randn(batch_size, self.cond_dim, device=self.beta.device)
             print(f"Using randomly generated conditioning vector")
         elif cond.dim() == 1:
-            # If single conditioning vector provided, expand to batch size
+            
             cond = cond.unsqueeze(0).expand(batch_size, -1)
         
         # Sample xT: Gaussian noise of shape [batch_size, 3, height, width]
@@ -779,9 +741,6 @@ class DDPM(nn.Module):
             class_weights = 1.0 / class_counts.float()
             # Normalize weights so they sum to number of classes
             class_weights = class_weights * (self.num_atom_types / class_weights.sum())
-
-            # Print weight information for debugging
-            # print(f"Using weights of shape {class_weights.shape} for {self.num_atom_types} atom types")
             
             # Create weighted loss
             atom_type_criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(x0.device))
@@ -790,7 +749,6 @@ class DDPM(nn.Module):
             atom_type_logits = network_output['atom_types']
             
             # Calculate cross-entropy loss for atom types
-            # First reshape to [batch_size * height * width, num_atom_types]
             B, C, H, W = atom_type_logits.shape
             atom_type_logits_flat = atom_type_logits.permute(0, 2, 3, 1).reshape(-1, C)
             
@@ -1111,9 +1069,7 @@ def validate(model, dataloader, device):
                         all_atom_type_truths.append(atom_types)
 
             
-            # Reshape to [batch_size, num_atoms, 3] for MAE calculation
-            # Permute from [batch_size, channels, height, width] to [batch_size, height, width, channels]
-            # Then reshape to [batch_size, height*width, channels]
+            
             batch_size = x.size(0)
             
             # Permute dimensions before reshaping to correctly align channels
@@ -1208,7 +1164,6 @@ def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='sample
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
-    # Switch to eval mode
     model.eval()
 
     # Sample for each conditioning vector
@@ -1217,10 +1172,7 @@ def sample_and_save_images(model, cond_vectors, num_samples=10, save_dir='sample
             # Generate samples directly in 3D format [batch_size, channels, height, width]
             samples = model.sample(num_samples, cond.to(model.beta.device)).cpu()
             
-            # # Map pixel values back from [-1,1] to [0,1]
-            # samples = (samples+1)/2 
-            # samples = samples.clamp(0.0, 1.0)
-
+            
             # Create a grid of images
             grid = utils.make_grid(samples, nrow=int(math.sqrt(num_samples)))
             
@@ -1330,8 +1282,7 @@ class VectorConditionedDataset(torch.utils.data.Dataset):
             
             # Process ordered atom types if available
             if has_atom_types and ordered_atom_types is not None:
-                # Keep atom indices as discrete values (no normalization)
-                # Reshape to match position data shape [batch_size, 1, height, width]
+                
                 atom_indices_reshaped = ordered_atom_types.view(batch_size, 1, 10, 10)
                 self.atom_types.append(atom_indices_reshaped)
             
@@ -1565,7 +1516,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
         return torch.ones(1).to(device)
 
     # Construct Unet
-    unet = ScoreNet(
+    unet = UNet(
         marginal_prob_std_fn,
         cond_dim=cond_dim,
         cond_embed_dim=cond_embed_dim,
@@ -1588,7 +1539,6 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
     # Setup scheduler
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.9999)
 
-    # Save reference to first few images for sampling comparison
     # Get the first batch from the train dataset for visualization
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -1678,9 +1628,6 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         sample_atom = sample_atom_types[i].cpu().view(-1)
                         sample_atom_types_list.append(sample_atom)
                     
-                    # Get the best alignment for each sample
-                    # We need to properly reshape the tensors for the Kabsch alignment
-                    # The function expects tensors of shape [batch_size, n_atoms, 3]
                     
                     # For predicted sample, reshape from [3, H, W] to [1, H*W, 3]
                     sample_for_align = samples_normalized_img[i].clone()
@@ -1736,17 +1683,11 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
             
             # Create a single ScalarMappable for the colorbar if using atom types
             if all_gt_atom_types and num_atom_types > 0:
-                # We need more colors than tab10 provides (only 10 colors)
-                # Create a custom colormap with enough distinct colors for all atom types
                 if num_atom_types <= 10:
-                    # For 10 or fewer categories, tab10 is excellent
                     cmap = plt.cm.get_cmap('tab10', num_atom_types)
                 elif num_atom_types <= 20:
-                    # For up to 20, we can use tab20
                     cmap = plt.cm.get_cmap('tab20', num_atom_types)
                 else:
-                    # For more categories, create a custom colormap with enough distinct colors
-                    # Use HSV color space to create maximally distinct colors
                     import matplotlib.colors as mcolors
                     
                     # Create evenly spaced hues
@@ -1782,15 +1723,11 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         atom_num = idx_to_atom_num.get(str(i), "?")
                         labels.append(f"Z={atom_num}")
                     
-                    # Set tick positions and labels for a discrete colorbar
-                    # For a discrete colorbar with N colors, we want ticks in the middle of each color
                     ticks = np.arange(num_atom_types) + 0.5
                     
-                    # If there are too many atom types, show only a subset of labels to avoid overcrowding
+                    
                     if num_atom_types > 20:
-                        # Determine how many labels to show (approximately one every 5-10 positions)
                         stride = max(1, num_atom_types // 15)
-                        # Create subset of ticks and labels
                         subset_indices = range(0, num_atom_types, stride)
                         subset_ticks = [ticks[i] for i in subset_indices]
                         subset_labels = [labels[i] for i in subset_indices]
@@ -1848,15 +1785,11 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         
                         # Get the aligned coordinates from the result
                         aligned_points = aligned_structure['aligned_pred_coords'][0]  # Get the first batch element
-                        
-                        # Reshape for plotting if needed
                         if aligned_points.ndim == 4:  # [batch, channels, height, width]
                             aligned_points = aligned_points[0].permute(1, 2, 0).reshape(-1, 3)
                         elif aligned_points.ndim == 3:  # [batch, atoms, 3]
                             aligned_points = aligned_points[0]  # Get first batch element
                         
-                        # IMPORTANT: Use the same atom types from the original prediction for coloring
-                        # This ensures the aligned visualization matches the color scheme of the original
                         if len(all_sample_atom_types) > row_idx and num_atom_types > 0:
                             # Use the same atom types as used for the original prediction
                             aligned_atom_types = all_sample_atom_types[row_idx][sample_idx].numpy()
@@ -1879,8 +1812,7 @@ def train_vector_conditioned_ddpm(train_data, val_data=None, test_data=None, T=1
                         ax_aligned.text(0, 0, 0, "Alignment Error", fontsize=12)
                     
                     style_3d_axes(ax_aligned, f'Aligned Prediction {sample_idx+1}')
-            
-            # Adjust layout for better spacing - give more space on the left for the colorbar
+
             plt.subplots_adjust(wspace=0.3, hspace=0.3, left=0.15)
             
             # Save the 3D plot
@@ -2202,8 +2134,6 @@ def distance_based_ordering(pos, atom_types=None, start_method='center'):
 def hierarchical_quadrant_ordering(pos, atom_types=None):
     """
     Order atoms using hierarchical quadrant division with median-based center selection.
-    This innovative method preserves spatial locality at multiple scales by recursively
-    dividing space into quadrants and placing the most central atom at each level.
     
     Parameters
     ----------
